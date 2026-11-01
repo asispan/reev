@@ -16,10 +16,20 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
+    // Upload key comes from env vars (never committed). Without them, release falls back to the debug key.
+    val ksPath = System.getenv("REEV_KEYSTORE")
+    val ksPass = System.getenv("REEV_KEYSTORE_PASSWORD")
+    signingConfigs {
+        if (ksPath != null && ksPass != null) create("upload") {
+            storeFile = file(ksPath); storePassword = ksPass
+            keyAlias = System.getenv("REEV_KEY_ALIAS") ?: "reev-upload"; keyPassword = ksPass
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

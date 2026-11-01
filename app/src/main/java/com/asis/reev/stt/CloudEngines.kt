@@ -162,6 +162,8 @@ object TextCleanup {
         var t = s.trim()
         if (removeFillers) t = t.replace(fillers, "$1").replace(Regex("""\s{2,}"""), " ").replace(Regex("""\s+([,.!?])"""), "$1").trim()
         t = t.trimStart(',', ' ')
+        // Re-capitalise sentence starts exposed by filler removal ("late. uh, can" -> "late. Can").
+        t = Regex("(^|[.!?]\\s+)([a-z])").replace(t) { it.groupValues[1] + it.groupValues[2].uppercase() }
         return t
     }
 }

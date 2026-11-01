@@ -46,6 +46,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     // editor state
     private var noSuggest = false
+    private var noLearn = false
     private var lastSpaceAt = 0L
     private var autoSpaced = false
     private var lastCorrection: Pair<String, String>? = null // original -> corrected (+space)
@@ -129,6 +130,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             variation == InputType.TYPE_TEXT_VARIATION_URI || variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
             variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0
+        // Incognito / sensitive fields: never learn words from them.
+        noLearn = noSuggest || (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
         val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
         keyboard.enterAction = if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0) 0
@@ -249,12 +252,12 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
                 ic.deleteSurroundingText(w.length, 0); ic.commitText("$fix ", 1)
                 ic.endBatchEdit()
                 lastCorrection = w to "$fix "
-                suggest.learn(fix)
+                if (!noLearn) suggest.learn(fix)
                 autoSpaced = true
                 if (keyboard.mode != KbMode.LETTERS) keyboard.mode = KbMode.LETTERS
                 return
             }
-            suggest.learn(w)
+            if (!noLearn) suggest.learn(w)
         }
         ic.commitText(" ", 1)
         lastCorrection = null; autoSpaced = false
@@ -346,7 +349,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (w.isNotEmpty()) ic.deleteSurroundingText(w.length, 0)
         ic.commitText("$word ", 1)
         ic.endBatchEdit()
-        suggest.learn(word)
+        if (!noLearn) suggest.learn(word)
         autoSpaced = true; lastCorrection = null
     }
 

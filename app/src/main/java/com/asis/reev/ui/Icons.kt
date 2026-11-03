@@ -121,6 +121,18 @@ object Icons {
         c.drawLine(cx - d, cy - d, cx + d, cy + d, p); c.drawLine(cx - d, cy + d, cx + d, cy - d, p)
     }
 
+    /** Globe: switch to the next keyboard. */
+    fun globe(c: Canvas, cx: Float, cy: Float, s: Float, p: Paint) {
+        val r = s * 0.36f
+        c.drawCircle(cx, cy, r, p)
+        c.drawOval(RectF(cx - r * 0.45f, cy - r, cx + r * 0.45f, cy + r), p)
+        c.drawLine(cx - r, cy, cx + r, cy, p)
+        c.drawLine(cx, cy - r, cx, cy + r, p)
+        val dy = r * 0.5f; val dx = r * 0.86f
+        c.drawLine(cx - dx, cy - dy, cx + dx, cy - dy, p)
+        c.drawLine(cx - dx, cy + dy, cx + dx, cy + dy, p)
+    }
+
     fun check(c: Canvas, cx: Float, cy: Float, s: Float, p: Paint) {
         val d = s * 0.3f
         path.reset(); path.moveTo(cx - d, cy); path.lineTo(cx - d * 0.25f, cy + d * 0.7f); path.lineTo(cx + d, cy - d * 0.6f)

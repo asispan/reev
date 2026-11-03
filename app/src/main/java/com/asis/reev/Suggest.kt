@@ -33,8 +33,64 @@ class Suggest(ctx: Context) {
             }
             sp.all.forEach { (k, v) -> (v as? Int)?.let { learned[k] = it.toLong() } }
             freq = f
-            words = f.keys.toTypedArray().also { it.sort() }
+            val sorted = f.keys.toTypedArray().also { it.sort() }
+            val cum = LongArray(sorted.size + 1)
+            for (i in sorted.indices) cum[i + 1] = cum[i] + (f[sorted[i]] ?: 0L)
+            cumFreq = cum
+            words = sorted
+            ready = true
+            onReady?.invoke()
         }
+    }
+
+    @Volatile var ready = false
+        private set
+    /** Called once (on a background thread) when the dictionary has loaded. */
+    @Volatile var onReady: (() -> Unit)? = null
+    @Volatile private var cumFreq = LongArray(1)
+
+    /** Total corpus frequency of all words starting with [prefix] (lowercase). */
+    private fun prefixMass(prefix: String): Long {
+        val arr = words
+        if (arr.isEmpty()) return 0
+        var lo = 0; var hi = arr.size
+        while (lo < hi) { val m = (lo + hi) ushr 1; if (arr[m] < prefix) lo = m + 1 else hi = m }
+        val start = lo
+        val upper = prefix + '\uffff'
+        hi = arr.size
+        while (lo < hi) { val m = (lo + hi) ushr 1; if (arr[m] < upper) lo = m + 1 else hi = m }
+        return cumFreq[lo] - cumFreq[start]
+    }
+
+    /**
+     * Language prior for the next letter given the letters typed so far in this word: P(c | prefix)
+     * for c in a..z, smoothed so that nothing is ever impossible. Used to resolve ambiguous taps.
+     */
+    fun letterPrior(prefix: String): FloatArray? {
+        if (!ready) return null
+        val p = prefix.lowercase()
+        if (p.any { it !in 'a'..'z' && it != '\'' }) return null
+        val masses = LongArray(26) { prefixMass(p + ('a' + it)) }
+        val total = masses.sum().toDouble()
+        if (total <= 0) return null
+        val alpha = total * 0.01 + 1.0
+        return FloatArray(26) { ((masses[it] + alpha) / (total + 26 * alpha)).toFloat() }
+    }
+
+    /** Most frequent plain a–z words plus learned words, for the glide decoder. */
+    fun glideVocab(limit: Int = 30000): List<Pair<String, Long>> {
+        val f = freq
+        val base = f.entries.asSequence().filter { e -> e.key.length >= 2 && e.key.all { it in 'a'..'z' } }
+            .sortedByDescending { it.value }.take(limit).map { it.key to it.value }.toMutableList()
+        val have = base.mapTo(HashSet()) { it.first }
+        learned.forEach { (w, n) -> if (w !in have && w.length >= 2 && w.all { it in 'a'..'z' }) base += w to (n * 5_000L) }
+        return base
+    }
+
+    /** Canonical display form ("i" -> "I"), with the given capitalisation applied. */
+    fun display(word: String, capFirst: Boolean, allCaps: Boolean): String {
+        val base = display[word] ?: word
+        return when { allCaps -> base.uppercase(); capFirst -> base.replaceFirstChar { it.uppercase() }; else -> base }
     }
 
     private fun score(w: String): Long = (freq[w] ?: 0L) + (learned[w] ?: 0L) * 2_000_000L

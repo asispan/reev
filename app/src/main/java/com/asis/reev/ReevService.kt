@@ -51,6 +51,14 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private var autoSpaced = false
     private var lastCorrection: Pair<String, String>? = null // original -> corrected (+space)
 
+    // glide typing
+    private val glideExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var glideDecoder: com.asis.reev.glide.GlideDecoder? = null
+    private var glideLayoutKey = ""
+    private var glideWord: String? = null          // last glided word, as committed
+    private var glideAlts: List<String> = emptyList()
+    private var afterGlide = false                 // cursor sits right after a glided word
+
     // voice state
     private var recorder: MicRecorder? = null
     private var session: SttSession? = null
@@ -114,6 +122,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private fun applyPrefs() {
         val h = prefs.haptics
         keyboard.hapticsOn = h; topBar.hapticsOn = h; voice.hapticsOn = h; emoji?.hapticsOn = h
+        keyboard.glideEnabled = prefs.glideTyping
         voice.engineLabel = prefs.engine.short
     }
 
@@ -136,14 +145,25 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         keyboard.enterAction = if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0) 0
         else if (action in 2..6) action else 0
+        keyboard.showSwitchKey = offerSwitch()
         if (!restarting) {
             keyboard.mode = if (cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE || cls == InputType.TYPE_CLASS_DATETIME) KbMode.SYMBOLS else KbMode.LETTERS
             if (keyboard.shift == ShiftState.LOCKED) keyboard.shift = ShiftState.OFF
             showKeys()
         }
         lastCorrection = null; autoSpaced = false
+        clearGlide()
         updateShift(); updateSuggestions()
     }
+
+    /** Whether to show the globe key: true when the user has another keyboard to switch to. */
+    private fun offerSwitch(): Boolean = if (Build.VERSION.SDK_INT >= 28) shouldOfferSwitchingToNextInputMethod() else {
+        val token = window?.window?.attributes?.token
+        @Suppress("DEPRECATION")
+        token != null && getSystemService(android.view.inputmethod.InputMethodManager::class.java).shouldOfferSwitchingToNextInputMethod(token)
+    }
+
+    private fun clearGlide() { glideWord = null; glideAlts = emptyList(); afterGlide = false }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
@@ -154,6 +174,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onUpdateSelection(oss: Int, ose: Int, nss: Int, nse: Int, cs: Int, ce: Int) {
         super.onUpdateSelection(oss, ose, nss, nse, cs, ce)
         if (root == null) return
+        if (glideWord != null && wordBeforeCursor() != glideWord) clearGlide()
         updateShift(); updateSuggestions()
     }
 
@@ -208,6 +229,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (!this::topBar.isInitialized || topBar.voiceMode) return
         if (noSuggest) { topBar.suggestions = emptyList(); return }
         val w = wordBeforeCursor()
+        val gw = glideWord
+        if (gw != null && glideAlts.isNotEmpty() && w == gw) { topBar.suggestions = glideAlts; return }
         topBar.suggestions = if (w.isEmpty() || w.any { it.isDigit() }) emptyList() else suggest.suggest(w)
     }
 
@@ -216,7 +239,12 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     // ---------------- KeyboardView.Listener ----------------
     override fun onKeyText(text: String) {
         val ic = currentInputConnection ?: return
-        if (text == " ") { onSpaceKey(); return }
+        if (text == " ") { afterGlide = false; glideWord = null; onSpaceKey(); return }
+        if (afterGlide) {
+            // Gboard-style: tapping a letter right after a glided word starts a new word.
+            if (text.length == 1 && text[0].isLetterOrDigit()) ic.commitText(" ", 1)
+            clearGlide()
+        }
         val isPunct = text.length == 1 && text[0] in ".,?!:;)"
         if (isPunct && autoSpaced) {
             val b = ic.getTextBeforeCursor(1, 0)
@@ -266,6 +294,16 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     override fun onDelete() {
         val ic = currentInputConnection ?: return
+        // Backspace right after a glided word removes the whole word (as Gboard does).
+        val gw = glideWord
+        if (afterGlide && gw != null) {
+            val before = ic.getTextBeforeCursor(gw.length + 1, 0)?.toString() ?: ""
+            clearGlide()
+            if (before.endsWith(gw)) {
+                val n = if (before.length == gw.length + 1 && before[0] == ' ') gw.length + 1 else gw.length
+                ic.deleteSurroundingText(n, 0); return
+            }
+        }
         lastCorrection?.let { (orig, fixed) ->
             val b = ic.getTextBeforeCursor(fixed.length, 0)?.toString()
             if (b == fixed) {
@@ -329,6 +367,57 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     override fun onKeyDownFeedback() {}
 
+    override fun onSwitchIme(longPress: Boolean) {
+        val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        if (longPress) { imm.showInputMethodPicker(); return }
+        val switched = if (Build.VERSION.SDK_INT >= 28) switchToNextInputMethod(false) else {
+            val token = window?.window?.attributes?.token
+            @Suppress("DEPRECATION")
+            token != null && imm.switchToNextInputMethod(token, false)
+        }
+        if (!switched) imm.showInputMethodPicker()
+    }
+
+    override fun letterPrior(): FloatArray? {
+        if (noSuggest) return null
+        val w = if (afterGlide) "" else wordBeforeCursor()
+        if (w.length > 20) return null
+        return suggest.letterPrior(w)
+    }
+
+    override fun onGlide(xs: FloatArray, ys: FloatArray, n: Int) {
+        val cx = xs.copyOf(n); val cy = ys.copyOf(n)
+        val layoutKey = "${keyboard.width}x${keyboard.height}:${keyboard.showSwitchKey}"
+        val centers = if (layoutKey != glideLayoutKey || glideDecoder == null) keyboard.letterCenters() else null
+        val shift = keyboard.shift
+        glideExec.execute {
+            if (centers != null) {
+                if (!suggest.ready || centers.isEmpty()) return@execute
+                glideDecoder = com.asis.reev.glide.GlideDecoder(centers, suggest.glideVocab())
+                glideLayoutKey = layoutKey
+            }
+            val t0 = System.currentTimeMillis()
+            val cands = glideDecoder?.decode(cx, cy, n, 5) ?: emptyList()
+            android.util.Log.d("ReevGlide", "decoded ${n} pts in ${System.currentTimeMillis() - t0} ms -> $cands")
+            main.post { commitGlide(cands, shift) }
+        }
+    }
+
+    private fun commitGlide(cands: List<String>, shift: ShiftState) {
+        val ic = currentInputConnection ?: return
+        if (cands.isEmpty()) return
+        val shown = cands.map { suggest.display(it, capFirst = shift == ShiftState.ON, allCaps = shift == ShiftState.LOCKED) }
+        val word = shown[0]
+        val before = ic.getTextBeforeCursor(1, 0)?.toString() ?: ""
+        val lead = if (before.isNotEmpty() && !before[0].isWhitespace() && before[0] !in "([{\"'“‘/@#") " " else ""
+        ic.commitText(lead + word, 1)
+        glideWord = word; glideAlts = shown; afterGlide = true
+        autoSpaced = false; lastCorrection = null
+        if (keyboard.shift == ShiftState.ON) keyboard.shift = ShiftState.OFF
+        topBar.suggestions = shown
+        updateShift()
+    }
+
     // ---------------- TopBar.Listener ----------------
     override fun onSettings() {
         startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -345,6 +434,14 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         val w = wordBeforeCursor()
+        val gw = glideWord
+        if (gw != null && w == gw) {
+            // Swap the glided word for the alternative, keeping the glide state.
+            ic.beginBatchEdit(); ic.deleteSurroundingText(gw.length, 0); ic.commitText(word, 1); ic.endBatchEdit()
+            glideWord = word; afterGlide = true
+            if (!noLearn) suggest.learn(word)
+            return
+        }
         ic.beginBatchEdit()
         if (w.isNotEmpty()) ic.deleteSurroundingText(w.length, 0)
         ic.commitText("$word ", 1)

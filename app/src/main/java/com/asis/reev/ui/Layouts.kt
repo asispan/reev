@@ -1,6 +1,6 @@
 package com.asis.reev.ui
 
-enum class KeyType { CHAR, SHIFT, DELETE, SYMBOLS, LETTERS, MORE_SYMBOLS, EMOJI, SPACE, ENTER, SPACER }
+enum class KeyType { CHAR, SHIFT, DELETE, SYMBOLS, LETTERS, MORE_SYMBOLS, EMOJI, SPACE, ENTER, SPACER, SWITCH_IME }
 
 class Key(
     val type: KeyType,
@@ -37,23 +37,32 @@ object Layouts {
         Key(KeyType.CHAR, s, popup = pop, hint = digits?.get(i)?.toString())
     }
 
-    fun bottomRow(symbolsMode: Boolean) = listOf(
-        if (symbolsMode) Key(KeyType.LETTERS, "ABC", 1.5f) else Key(KeyType.SYMBOLS, "?123", 1.5f),
-        Key(KeyType.CHAR, ",", 1f, popup = listOf("'", "\"", ";", ":", "-", "/"), hint = null),
-        Key(KeyType.EMOJI, "", 1f),
-        Key(KeyType.SPACE, "", 4f),
-        Key(KeyType.CHAR, ".", 1f, popup = listOf("?", "!", ",", "…", "@", "#", "-"), hint = null),
-        Key(KeyType.ENTER, "", 1.5f),
-    )
+    /**
+     * Bottom row. With [switchKey] a keyboard-switch (globe) key sits in the bottom-left corner,
+     * like Gboard, whenever the system says there's another keyboard to switch to.
+     */
+    fun bottomRow(symbolsMode: Boolean, switchKey: Boolean): List<Key> {
+        val modeKey = if (symbolsMode) Key(KeyType.LETTERS, "ABC", if (switchKey) 1.2f else 1.5f)
+        else Key(KeyType.SYMBOLS, "?123", if (switchKey) 1.2f else 1.5f)
+        return listOfNotNull(
+            if (switchKey) Key(KeyType.SWITCH_IME, "", 1f) else null,
+            modeKey,
+            Key(KeyType.CHAR, ",", 1f, popup = listOf("'", "\"", ";", ":", "-", "/"), hint = null),
+            Key(KeyType.EMOJI, "", 1f),
+            Key(KeyType.SPACE, "", if (switchKey) 3.6f else 4f),
+            Key(KeyType.CHAR, ".", 1f, popup = listOf("?", "!", ",", "…", "@", "#", "-"), hint = null),
+            Key(KeyType.ENTER, "", if (switchKey) 1.2f else 1.5f),
+        )
+    }
 
-    val letters: List<List<Key>> = listOf(
+    fun letters(switchKey: Boolean): List<List<Key>> = listOf(
         letterRow("qwertyuiop", "1234567890"),
         listOf(Key(KeyType.SPACER, weight = 0.5f)) + letterRow("asdfghjkl") + listOf(Key(KeyType.SPACER, weight = 0.5f)),
         listOf(Key(KeyType.SHIFT, weight = 1.5f)) + letterRow("zxcvbnm") + listOf(Key(KeyType.DELETE, weight = 1.5f)),
-        bottomRow(false),
+        bottomRow(false, switchKey),
     )
 
-    val symbols: List<List<Key>> = listOf(
+    fun symbols(switchKey: Boolean): List<List<Key>> = listOf(
         "1234567890".map { c(it.toString()) },
         listOf(
             c("@"), c("#"), c("\$", "₹", "€", "£", "¥", "¢"), c("_"), c("&"), c("-", "–", "—", "·"),
@@ -62,14 +71,14 @@ object Layouts {
         listOf(Key(KeyType.MORE_SYMBOLS, "=\\<", 1.5f)) +
             listOf(c("*", "★", "†"), c("\"", "“", "”"), c("'", "‘", "’"), c(":"), c(";"), c("!", "¡"), c("?", "¿")) +
             listOf(Key(KeyType.DELETE, weight = 1.5f)),
-        bottomRow(true),
+        bottomRow(true, switchKey),
     )
 
-    val moreSymbols: List<List<Key>> = listOf(
+    fun moreSymbols(switchKey: Boolean): List<List<Key>> = listOf(
         "~`|•√π÷×¶∆".map { c(it.toString()) },
         "£€¥₹^°={}".map { c(it.toString()) } + listOf(c("%", "‰")),
         listOf(Key(KeyType.SYMBOLS, "?123", 1.5f)) +
             "\\©®™[]<".map { c(it.toString()) } + listOf(Key(KeyType.DELETE, weight = 1.5f)),
-        bottomRow(true),
+        bottomRow(true, switchKey),
     )
 }

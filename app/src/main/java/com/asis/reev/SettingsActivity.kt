@@ -117,6 +117,7 @@ class SettingsActivity : Activity() {
         tg.setOnCheckedChangeListener { g, cid -> prefs.theme = g.findViewById<View>(cid).tag as String }
         typ.addView(tg)
         toggle(typ, "Haptic feedback", prefs.haptics) { prefs.haptics = it }
+        toggle(typ, "Glide typing (swipe across letters)", prefs.glideTyping) { prefs.glideTyping = it }
         toggle(typ, "Auto-capitalisation", prefs.autoCap) { prefs.autoCap = it }
         toggle(typ, "Autocorrect on space", prefs.autocorrect) { prefs.autocorrect = it }
         toggle(typ, "Double-space for period", prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }

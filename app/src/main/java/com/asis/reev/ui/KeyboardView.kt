@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Handler
@@ -11,7 +12,10 @@ import android.os.Looper
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import com.asis.reev.glide.KeyCenter
 import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.ln
 
 enum class KbMode { LETTERS, SYMBOLS, MORE }
 enum class ShiftState { OFF, ON, LOCKED }
@@ -28,21 +32,41 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         fun onModeChange(mode: KbMode)
         fun onCursorMove(steps: Int)
         fun onKeyDownFeedback()
+        /** Tap on the globe key: switch to the next keyboard. Long-press: show the picker. */
+        fun onSwitchIme(longPress: Boolean)
+        /** A glide (swipe) gesture across letter keys finished. Points are in view pixels. */
+        fun onGlide(xs: FloatArray, ys: FloatArray, n: Int)
+        /** P(next letter a..z | current word prefix), or null if unknown. */
+        fun letterPrior(): FloatArray?
     }
 
     var listener: Listener? = null
     var overlay: OverlayView? = null
     var hapticsOn = true
+    var glideEnabled = true
+
+    /** Show the globe (switch keyboard) key in the bottom-left corner. */
+    var showSwitchKey = false
+        set(v) { if (field != v) { field = v; rebuildRows() } }
 
     var mode = KbMode.LETTERS
-        set(v) { field = v; rows = when (v) { KbMode.LETTERS -> Layouts.letters; KbMode.SYMBOLS -> Layouts.symbols; KbMode.MORE -> Layouts.moreSymbols }; layoutKeys(); invalidate() }
+        set(v) { field = v; rebuildRows() }
+
+    private fun rebuildRows() {
+        rows = when (mode) {
+            KbMode.LETTERS -> Layouts.letters(showSwitchKey)
+            KbMode.SYMBOLS -> Layouts.symbols(showSwitchKey)
+            KbMode.MORE -> Layouts.moreSymbols(showSwitchKey)
+        }
+        layoutKeys(); invalidate()
+    }
     var shift = ShiftState.OFF
         set(v) { if (field != v) { field = v; invalidate() } }
     /** IME action label: 0 = newline, else one of EditorInfo.IME_ACTION_*. */
     var enterAction = 0
         set(v) { field = v; invalidate() }
 
-    private var rows: List<List<Key>> = Layouts.letters
+    private var rows: List<List<Key>> = Layouts.letters(false)
     private val rowH = ctx.dp(54f)
     private val padV = ctx.dp(6f)
     private val gapH = ctx.dp(5f)
@@ -65,11 +89,37 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         var spaceDrag = false
         var lastStepX = x0
         var deleteSwipe = false
+        var gliding = false
+        var switchLongPressed = false
+        var n = 0
+        var xs = FloatArray(256); var ys = FloatArray(256)
+        fun add(x: Float, y: Float) {
+            if (n == xs.size) { xs = xs.copyOf(n * 2); ys = ys.copyOf(n * 2) }
+            xs[n] = x; ys[n] = y; n++
+        }
     }
     private var active: Touch? = null
     private var lastShiftTap = 0L
 
+    private val trailPath = Path()
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = pal.accent; style = Paint.Style.STROKE; strokeWidth = ctx.dp(5f)
+        strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; alpha = 200
+    }
+
     init { setLayerType(LAYER_TYPE_HARDWARE, null) }
+
+    private fun isLetterKey(k: Key) = k.type == KeyType.CHAR && k.label.length == 1 && k.label[0] in 'a'..'z'
+
+    /** Letter-key centres of the QWERTY layer, for the glide decoder. Empty until laid out. */
+    fun letterCenters(): List<KeyCenter> {
+        if (width == 0) return emptyList()
+        val letters = Layouts.letters(showSwitchKey)
+        layoutRows(letters)
+        return letters.flatten().filter { isLetterKey(it) }.map {
+            KeyCenter(it.label[0], it.cx, it.cy, it.r - it.l, it.b - it.t)
+        }
+    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -79,7 +129,9 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = layoutKeys()
 
-    private fun layoutKeys() {
+    private fun layoutKeys() = layoutRows(rows)
+
+    private fun layoutRows(rows: List<List<Key>>) {
         if (width == 0) return
         val unit = width / 10f
         rows.forEachIndexed { ri, row ->
@@ -114,6 +166,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
             c.drawRoundRect(rect, radius, radius, keyPaint)
             drawLabel(c, k, rect)
         }
+        if (active?.gliding == true) c.drawPath(trailPath, trailPaint)
     }
 
     private fun drawLabel(c: Canvas, k: Key, rect: RectF) {
@@ -139,6 +192,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
                 else -> Icons.enter(c, cx, cy, s * 0.5f, accentIconStroke)
             }
             KeyType.EMOJI -> Icons.smile(c, cx, cy, s * 0.62f, iconStroke)
+            KeyType.SWITCH_IME -> Icons.globe(c, cx, cy, s * 0.62f, iconStroke)
             KeyType.SPACE -> {
                 val p = Paint(hintPaint).apply { textAlign = Paint.Align.CENTER; textSize = context.dp(12f) }
                 val fm = p.fontMetrics
@@ -150,6 +204,34 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
             }
             KeyType.SPACER -> {}
         }
+    }
+
+    /**
+     * Tap → key. Exact hit first; for letters, ambiguous taps near a key edge are resolved with a
+     * spatial Gaussian around each key centre combined with a language prior for the next letter
+     * (the same idea Gboard/SwiftKey use, a.k.a. dynamic hit targets). A tap near the centre of a
+     * key always wins: the prior is clamped so it can't overturn a clear hit.
+     */
+    private fun resolveKey(x: Float, y: Float): Key? {
+        val base = keyAt(x, y) ?: return null
+        if (mode != KbMode.LETTERS || !isLetterKey(base)) return base
+        val prior = listener?.letterPrior()
+        val kw = base.r - base.l; val kh = base.b - base.t
+        val sx = 0.42f * kw; val sy = 0.42f * kh
+        val maxP = prior?.maxOrNull() ?: 0f
+        var best = base; var bestScore = Double.NEGATIVE_INFINITY
+        for (row in rows) for (k in row) {
+            if (!isLetterKey(k)) continue
+            val dx = (x - k.cx) / sx; val dy = (y - k.cy) / sy
+            if (abs(x - k.cx) > kw * 1.3f || abs(y - k.cy) > kh * 1.3f) continue
+            var score = -0.5 * (dx * dx + dy * dy)
+            if (prior != null && maxP > 0f) {
+                val p = (prior[k.label[0] - 'a'] / maxP).coerceIn(0.1f, 1f)
+                score += 0.5 * ln(p.toDouble())
+            }
+            if (score > bestScore) { bestScore = score; best = k }
+        }
+        return best
     }
 
     private fun keyAt(x: Float, y: Float): Key? {
@@ -196,6 +278,13 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
     private fun onLongPress() {
         val t = active ?: return
         val k = t.key
+        if (k.type == KeyType.SWITCH_IME) {
+            t.switchLongPressed = true
+            if (hapticsOn) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            listener?.onSwitchIme(true)
+            return
+        }
+        if (t.gliding) return
         if (k.type == KeyType.CHAR && k.popup.isNotEmpty()) {
             t.longPressed = true
             val items = if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.popup.map { it.uppercase() } else k.popup
@@ -205,8 +294,8 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
     }
 
     private fun press(id: Int, x: Float, y: Float) {
-        val k = keyAt(x, y) ?: return
-        active = Touch(id, k, x, y)
+        val k = resolveKey(x, y) ?: return
+        active = Touch(id, k, x, y).also { it.add(x, y) }
         feedback()
         invalidate()
         when (k.type) {
@@ -220,6 +309,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
                 repeatCount = 0
                 handler.postDelayed(repeatRunnable, repeatDelay)
             }
+            KeyType.SWITCH_IME -> handler.postDelayed(longPressRunnable, 450)
             else -> {}
         }
     }
@@ -233,18 +323,22 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         if (commit) {
             if (t.longPressed) {
                 overlay?.popupValue()?.let { listener?.onKeyText(it) }
-            } else if (!t.spaceDrag && !t.deleteSwipe) when (k.type) {
+            } else if (t.gliding) {
+                listener?.onGlide(t.xs, t.ys, t.n)
+            } else if (!t.spaceDrag && !t.deleteSwipe && !t.switchLongPressed) when (k.type) {
                 KeyType.CHAR -> listener?.onKeyText(if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.label.uppercase() else k.label)
                 KeyType.SPACE -> listener?.onKeyText(" ")
                 KeyType.ENTER -> listener?.onEnter()
                 KeyType.EMOJI -> listener?.onEmoji()
                 KeyType.SHIFT -> listener?.onShift()
+                KeyType.SWITCH_IME -> listener?.onSwitchIme(false)
                 KeyType.SYMBOLS -> { mode = KbMode.SYMBOLS; listener?.onModeChange(mode) }
                 KeyType.LETTERS -> { mode = KbMode.LETTERS; listener?.onModeChange(mode) }
                 KeyType.MORE_SYMBOLS -> { mode = KbMode.MORE; listener?.onModeChange(mode) }
                 else -> {}
             } else if (t.deleteSwipe) listener?.onDeleteWord()
         }
+        if (t.gliding) { trailPath.reset() }
         overlay?.hidePopup()
         active = null
         invalidate()
@@ -257,6 +351,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
             MotionEvent.ACTION_POINTER_DOWN -> {
                 // Fast typing: a second finger lands before the first lifts -> commit first.
                 val i = e.actionIndex
+                if (active?.gliding == true) return true
                 release(true)
                 press(e.getPointerId(i), e.getX(i), e.getY(i))
             }
@@ -276,16 +371,23 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
                     }
                     KeyType.DELETE -> if (!t.deleteSwipe && t.x0 - x > context.dp(40f)) { t.deleteSwipe = true; handler.removeCallbacks(repeatRunnable) }
                     KeyType.CHAR -> {
-                        // Slide to a neighbouring key before long-press fires = retarget.
-                        val k = keyAt(x, y)
-                        if (k != null && k !== t.key && k.type == KeyType.CHAR) {
+                        // No retargeting on small slides: the key under the finger at touch-down is
+                        // the one typed (finger roll used to flip taps onto the neighbouring key).
+                        // A long slide from a letter in the QWERTY layer starts glide typing.
+                        for (h in 0 until e.historySize) t.add(e.getHistoricalX(i, h), e.getHistoricalY(i, h))
+                        t.add(x, y)
+                        val kw = t.key.r - t.key.l
+                        if (!t.gliding && glideEnabled && mode == KbMode.LETTERS && isLetterKey(t.key) &&
+                            hypot(x - t.x0, y - t.y0) > kw * 0.75f) {
+                            t.gliding = true
                             handler.removeCallbacks(longPressRunnable)
-                            active = Touch(t.id, k, x, y)
-                            val label = if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.label.uppercase() else k.label
-                            overlay?.showPreview(overlayRect(k), label)
-                            if (k.popup.isNotEmpty()) handler.postDelayed(longPressRunnable, 300)
-                            invalidate()
+                            overlay?.hidePreview()
+                            trailPath.reset(); trailPath.moveTo(t.xs[0], t.ys[0])
+                            for (j in 1 until t.n) trailPath.lineTo(t.xs[j], t.ys[j])
+                        } else if (t.gliding) {
+                            trailPath.lineTo(x, y)
                         }
+                        if (t.gliding) invalidate()
                     }
                     else -> {}
                 }

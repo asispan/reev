@@ -64,6 +64,10 @@ class Prefs(ctx: Context) {
         get() = sp.getString("theme", "system") ?: "system"
         set(v) = sp.edit().putString("theme", v).apply()
 
+    var glideTyping: Boolean
+        get() = sp.getBoolean("glide", true)
+        set(v) = sp.edit().putBoolean("glide", v).apply()
+
     var recentEmoji: String
         get() = sp.getString("recent_emoji", "😂 ❤️ 👍 🙏 😊 🔥 😍 🎉") ?: ""
         set(v) = sp.edit().putString("recent_emoji", v).apply()

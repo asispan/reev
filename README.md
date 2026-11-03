@@ -197,6 +197,7 @@ Android 8.0+ phones on arm64 or armv7. On-device dictation works best on recent 
 Ideas for dictation polish (keeping the model warm, removing fillers, detecting a silent mic, windowing long audio) came from studying [Spokenly](https://spokenly.app). The flow was inspired by [Wispr Flow](https://wisprflow.ai).
 
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0): on-device inference
+- Glide typing decoder: adapted from [FlorisBoard](https://github.com/florisboard/florisboard)'s statistical classifier and [AnySoftKeyboard](https://github.com/AnySoftKeyboard/AnySoftKeyboard/pull/1870) (Apache-2.0), using the SHARK2 shape + location method
 - [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0); int8 ONNX export by `mldecode`
 - [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) (CC-BY-4.0)
 - Word frequencies: [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC-BY-SA-4.0)

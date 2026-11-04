@@ -76,6 +76,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     private var builtPalette: Palette? = null
     private val themeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "hinglish") suggest.setHinglish(prefs.hinglish)
         if (key == "theme" && root != null) main.post { if (Palette.of(this) != builtPalette) setInputView(onCreateInputView()) }
     }
 
@@ -212,9 +213,28 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private fun wordBeforeCursor(): String {
         val before = currentInputConnection?.getTextBeforeCursor(48, 0)?.toString() ?: return ""
         var i = before.length
-        while (i > 0 && (before[i - 1].isLetterOrDigit() || before[i - 1] == '\'')) i--
+        while (i > 0 && (before[i - 1].isLetterOrDigit() || before[i - 1] == '\'' || before[i - 1] == '\u2019')) i--
         return before.substring(i)
     }
+
+    /**
+     * The word before the current one (skipping [curLen] chars of the word being typed), or null at a
+     * sentence start. [singleSpace] is true when exactly one space separates them (safe to rewrite).
+     */
+    private fun prevWord(curLen: Int): Pair<String?, Boolean> {
+        val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString() ?: return null to false
+        val end = before.length - curLen
+        if (end <= 0) return null to false
+        var j = end
+        while (j > 0 && before[j - 1] == ' ') j--
+        val gap = before.substring(j, end)
+        if (j == 0 || !(before[j - 1].isLetterOrDigit() || before[j - 1] == '\'' || before[j - 1] == '\u2019')) return null to false
+        var k = j
+        while (k > 0 && (before[k - 1].isLetterOrDigit() || before[k - 1] == '\'' || before[k - 1] == '\u2019')) k--
+        return before.substring(k, j) to (gap == " ")
+    }
+
+    private var pinned: String? = null   // word the user explicitly chose/restored: never auto-rewrite it
 
     private fun updateShift() {
         if (!this::keyboard.isInitialized) return
@@ -231,7 +251,13 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         val w = wordBeforeCursor()
         val gw = glideWord
         if (gw != null && glideAlts.isNotEmpty() && w == gw) { topBar.suggestions = glideAlts; return }
-        topBar.suggestions = if (w.isEmpty() || w.any { it.isDigit() }) emptyList() else suggest.suggest(w)
+        if (w.any { it.isDigit() }) { topBar.suggestions = emptyList(); return }
+        val prev = prevWord(w.length).first
+        topBar.suggestions = if (w.isNotEmpty()) suggest.suggest(w, prev) else {
+            // next-word prediction right after a space
+            val last = currentInputConnection?.getTextBeforeCursor(1, 0)?.toString() ?: ""
+            if (last == " " && prev != null) suggest.nextWords(prev) else emptyList()
+        }
     }
 
     private fun commit(text: String) { currentInputConnection?.commitText(text, 1) }
@@ -274,13 +300,20 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         lastSpaceAt = now
         val w = wordBeforeCursor()
         if (!noSuggest && w.isNotEmpty()) {
-            val fix = if (prefs.autocorrect) suggest.autocorrect(w) else null
-            if (fix != null && fix != w) {
+            val (w1, singleSpace) = prevWord(w.length)
+            val fix = if (prefs.autocorrect) suggest.autocorrect(w, w1) else null
+            val cur = if (fix != null && fix != w) fix else w
+            // Context fix of the previous word, e.g. "well see" -> "we'll see" (never "well done").
+            val retro = if (prefs.autocorrect && prefs.contextFix && w1 != null && singleSpace &&
+                !w1.equals(pinned, ignoreCase = true)) suggest.retroCorrect(w1, cur) else null
+            if (cur != w || retro != null) {
+                val orig = if (retro != null) "$w1 $w" else w
+                val replacement = (if (retro != null) "$retro " else "") + "$cur "
                 ic.beginBatchEdit()
-                ic.deleteSurroundingText(w.length, 0); ic.commitText("$fix ", 1)
+                ic.deleteSurroundingText(orig.length, 0); ic.commitText(replacement, 1)
                 ic.endBatchEdit()
-                lastCorrection = w to "$fix "
-                if (!noLearn) suggest.learn(fix)
+                lastCorrection = orig to replacement
+                if (!noLearn) suggest.learn(cur)
                 autoSpaced = true
                 if (keyboard.mode != KbMode.LETTERS) keyboard.mode = KbMode.LETTERS
                 return
@@ -305,6 +338,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             }
         }
         lastCorrection?.let { (orig, fixed) ->
+            pinned = orig.substringBefore(' ')
             val b = ic.getTextBeforeCursor(fixed.length, 0)?.toString()
             if (b == fixed) {
                 ic.deleteSurroundingText(fixed.length, 0); ic.commitText(orig, 1)
@@ -406,7 +440,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private fun commitGlide(cands: List<String>, shift: ShiftState) {
         val ic = currentInputConnection ?: return
         if (cands.isEmpty()) return
-        val shown = cands.map { suggest.display(it, capFirst = shift == ShiftState.ON, allCaps = shift == ShiftState.LOCKED) }
+        val withForms = (cands.take(1) + suggest.contractionsOf(cands[0]) + cands.drop(1)).distinct()
+        val shown = withForms.map { suggest.display(it, capFirst = shift == ShiftState.ON, allCaps = shift == ShiftState.LOCKED) }
         val word = shown[0]
         val before = ic.getTextBeforeCursor(1, 0)?.toString() ?: ""
         val lead = if (before.isNotEmpty() && !before[0].isWhitespace() && before[0] !in "([{\"'“‘/@#") " " else ""
@@ -446,6 +481,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (w.isNotEmpty()) ic.deleteSurroundingText(w.length, 0)
         ic.commitText("$word ", 1)
         ic.endBatchEdit()
+        pinned = word
         if (!noLearn) suggest.learn(word)
         autoSpaced = true; lastCorrection = null
     }

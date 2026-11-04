@@ -118,6 +118,8 @@ class SettingsActivity : Activity() {
         typ.addView(tg)
         toggle(typ, "Haptic feedback", prefs.haptics) { prefs.haptics = it }
         toggle(typ, "Glide typing (swipe across letters)", prefs.glideTyping) { prefs.glideTyping = it }
+        toggle(typ, "Hinglish suggestions (kya, nahi, yaar…)", prefs.hinglish) { prefs.hinglish = it }
+        toggle(typ, "Fix previous word from context (well see → we'll see)", prefs.contextFix) { prefs.contextFix = it }
         toggle(typ, "Auto-capitalisation", prefs.autoCap) { prefs.autoCap = it }
         toggle(typ, "Autocorrect on space", prefs.autocorrect) { prefs.autocorrect = it }
         toggle(typ, "Double-space for period", prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }

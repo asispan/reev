@@ -201,6 +201,8 @@ Ideas for dictation polish (keeping the model warm, removing fillers, detecting 
 - [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra) by Moondream (CC-BY-4.0); int8 ONNX export by `mldecode`
 - [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) (CC-BY-4.0)
 - Word frequencies: [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC-BY-SA-4.0)
+- Everyday English sentences: [Tatoeba](https://tatoeba.org) (CC-BY 2.0 FR), for contractions and word-pair context
+- Hinglish vocabulary and word pairs: [Hinglish Everyday Conversations 1M](https://huggingface.co/datasets/Abhishekcr448/Hinglish-Everyday-Conversations-1M) by Abhishek Khatri (MIT; synthetic GPT-4o-mini conversations)
 - Emoji data: Unicode `emoji-test.txt` v18
 
 Models are downloaded at runtime, not bundled.

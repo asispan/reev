@@ -68,6 +68,16 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("glide", true)
         set(v) = sp.edit().putBoolean("glide", v).apply()
 
+    /** Hinglish (romanised Hindi) words in suggestions, autocorrect and glide. */
+    var hinglish: Boolean
+        get() = sp.getBoolean("hinglish", true)
+        set(v) = sp.edit().putBoolean("hinglish", v).apply()
+
+    /** Fix the previous word once the next one is typed ("well see" -> "we'll see"). */
+    var contextFix: Boolean
+        get() = sp.getBoolean("context_fix", true)
+        set(v) = sp.edit().putBoolean("context_fix", v).apply()
+
     var recentEmoji: String
         get() = sp.getString("recent_emoji", "😂 ❤️ 👍 🙏 😊 🔥 😍 🎉") ?: ""
         set(v) = sp.edit().putString("recent_emoji", v).apply()

@@ -71,6 +71,7 @@ class GlideDecoder(
         val userNorm = userRes.normalizeByBoxSide()
 
         val best = ArrayList<Pair<String, Double>>()
+        val nearStart = startKeys[0]; val nearEnd = endKeys[0]
         for (word in candidates) {
             val ideals = idealGestures(word)
             val len = idealLength.getOrPut(word) { ideals[0].length() }
@@ -85,6 +86,9 @@ class GlideDecoder(
                     ln((freqScore[word] ?: 1f).toDouble())
                 if (lp > wordBest) wordBest = lp
             }
+            // Lifting the finger on a key is a strong signal: favour words that start/end on the nearest key.
+            if (word.first() == nearStart) wordBest += 0.4
+            if (word.last() == nearEnd) wordBest += 0.8
             if (wordBest > Double.NEGATIVE_INFINITY) best += word to wordBest
         }
         return best.sortedByDescending { it.second }.take(max).map { it.first }

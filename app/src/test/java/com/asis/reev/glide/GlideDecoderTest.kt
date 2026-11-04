@@ -18,8 +18,8 @@ class GlideDecoderTest {
     }
 
     private fun vocab(): List<Pair<String, Long>> =
-        File("src/main/assets/words.txt").readLines().mapNotNull { l ->
-            val t = l.split('\t'); if (t.size == 2) t[0].lowercase() to t[1].toLong() else null
+        File("src/main/assets/lexicon/words.tsv").readLines().mapNotNull { l ->
+            val t = l.split('\t'); if (t.size >= 2) t[0] to t[1].toLong() else null
         }.filter { it.first.length >= 2 && it.first.all { c -> c in 'a'..'z' } }.take(30000)
 
     /** Human-ish swipe: pass near each key centre with jitter, sampled every ~8 px. */

@@ -146,7 +146,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         keyboard.enterAction = if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0) 0
         else if (action in 2..6) action else 0
-        keyboard.showSwitchKey = offerSwitch()
+        keyboard.showSwitchKey = false   // no globe key: Android's own keyboard switcher handles this
         if (!restarting) {
             keyboard.mode = if (cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE || cls == InputType.TYPE_CLASS_DATETIME) KbMode.SYMBOLS else KbMode.LETTERS
             if (keyboard.shift == ShiftState.LOCKED) keyboard.shift = ShiftState.OFF
@@ -155,13 +155,6 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         lastCorrection = null; autoSpaced = false
         clearGlide()
         updateShift(); updateSuggestions()
-    }
-
-    /** Whether to show the globe key: true when the user has another keyboard to switch to. */
-    private fun offerSwitch(): Boolean = if (Build.VERSION.SDK_INT >= 28) shouldOfferSwitchingToNextInputMethod() else {
-        val token = window?.window?.attributes?.token
-        @Suppress("DEPRECATION")
-        token != null && getSystemService(android.view.inputmethod.InputMethodManager::class.java).shouldOfferSwitchingToNextInputMethod(token)
     }
 
     private fun clearGlide() { glideWord = null; glideAlts = emptyList(); afterGlide = false }
@@ -471,10 +464,14 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         val w = wordBeforeCursor()
         val gw = glideWord
         if (gw != null && w == gw) {
-            // Swap the glided word for the alternative, keeping the glide state.
-            ic.beginBatchEdit(); ic.deleteSurroundingText(gw.length, 0); ic.commitText(word, 1); ic.endBatchEdit()
-            glideWord = word; afterGlide = true
+            // Tapping a glide candidate (even the one already shown) confirms it: swap if needed,
+            // add the space and move on to next-word predictions.
+            clearGlide()
+            ic.beginBatchEdit(); ic.deleteSurroundingText(gw.length, 0); ic.commitText("$word ", 1); ic.endBatchEdit()
+            pinned = word
             if (!noLearn) suggest.learn(word)
+            autoSpaced = true; lastCorrection = null
+            updateShift(); updateSuggestions()
             return
         }
         ic.beginBatchEdit()

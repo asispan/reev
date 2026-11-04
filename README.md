@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/hero.jpg" alt="Reev — Say it. Reev types it." width="100%">
+  <img src="docs/hero.jpg" alt="Reev — Speak. Reev types." width="100%">
 </p>
 
 <p align="center">
@@ -8,11 +8,11 @@
 </p>
 
 <p align="center">
-  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-1B1A17?style=flat-square&logo=android&logoColor=white">
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.2-7C5CFF?style=flat-square&logo=kotlin&logoColor=white">
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-121826?style=flat-square&logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.2-E2336B?style=flat-square&logo=kotlin&logoColor=white">
   <img alt="On-device" src="https://img.shields.io/badge/on--device-NVIDIA%20Parakeet-76B900?style=flat-square&logo=nvidia&logoColor=white">
-  <img alt="Offline" src="https://img.shields.io/badge/works-offline-F4EFE6?style=flat-square&labelColor=1B1A17">
-  <img alt="No overlays" src="https://img.shields.io/badge/floating%20bubbles-none-F4EFE6?style=flat-square&labelColor=1B1A17">
+  <img alt="Offline" src="https://img.shields.io/badge/works-offline-0E8C8C?style=flat-square&labelColor=121826">
+  <img alt="No overlays" src="https://img.shields.io/badge/floating%20bubbles-none-0E8C8C?style=flat-square&labelColor=121826">
 </p>
 
 <br>

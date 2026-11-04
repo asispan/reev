@@ -38,7 +38,7 @@ class SettingsActivity : Activity() {
     private lateinit var col: LinearLayout
     private val fg = Color.parseColor("#F3F3F6")
     private val sub = Color.parseColor("#9A9CA6")
-    private val accent = Color.parseColor("#7C5CFF")
+    private val accent = Color.parseColor("#E2336B")
     private val card = Color.parseColor("#1B1C20")
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="FlowTheme" parent="android:Theme.Material.NoActionBar">
-        <item name="android:colorAccent">#7C5CFF</item>
+        <item name="android:colorAccent">#E2336B</item>
         <item name="android:windowBackground">#0F1012</item>
         <item name="android:statusBarColor">#0F1012</item>
         <item name="android:navigationBarColor">#0F1012</item>

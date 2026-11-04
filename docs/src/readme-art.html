@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- README artwork for github.com/asispan/reev. Render: tools/render_readme_art.sh (headless Chrome, 2x). Palette: brand/PALETTE.md -->
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=tanker@400&display=swap">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=excon@500&display=swap">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=ranade@300&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Noto+Color+Emoji&display=swap">
+<style>
+:root{--bg:#FAF8F4;--wall:#F2EFE9;--ink:#121826;--ink-2:#475066;--muted:#8B8F9C;--hair:rgba(18,24,38,.10);
+  --rani:#E2336B;--peacock:#0E8C8C;--deep:#0B6E70;--teal-soft:#8FE0D6;--plum:#8E2E7C;
+  --logo:"Tanker",sans-serif;--ui:"Excon",sans-serif;--text:"Ranade",sans-serif;--and:"Roboto",sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);font-family:var(--text);font-weight:300;-webkit-font-smoothing:antialiased}
+.board{position:relative;overflow:hidden}
+em{font-style:normal;background:linear-gradient(100deg,#0E8C8C 0%,#2B5E8C 35%,#8E2E7C 65%,#E2336B 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ---------- Android keyboard replica (matches the app's light/dark palettes) ---------- */
+.kb{--kbg:#E9EBEF;--key:#fff;--fn:#CDD1D9;--tx:#121826;--sub:#5F6472;--acc:#E2336B;--ent:#D62A62;--sh:rgba(18,24,38,.16);
+  width:400px;background:var(--kbg);font-family:var(--and);color:var(--tx);padding:0 3px 8px;user-select:none}
+.kb.dark{--kbg:#111215;--key:#2B2D33;--fn:#1D1F23;--tx:#F1F2F4;--sub:#9A9EA8;--acc:#E2336B;--ent:#E2336B;--sh:rgba(0,0,0,.5)}
+.kb .top{display:flex;align-items:center;height:46px;padding:0 4px}
+.kb .gear{width:34px;display:grid;place-items:center;color:var(--tx)}
+.kb .sugs{flex:1;display:flex;align-items:center}
+.kb .sugs span{flex:1;text-align:center;font-size:17px;color:var(--sub)}
+.kb .sugs span.b{color:var(--tx);font-weight:500}
+.kb .sugs i{width:1px;height:20px;background:var(--fn)}
+.kb .mic{width:38px;height:38px;border-radius:50%;background:var(--acc);display:grid;place-items:center;color:#fff}
+.kb .rows{display:grid;gap:9px;padding-top:6px}
+.kb .r{display:flex;gap:5px;justify-content:center}
+.kb .k{position:relative;flex:0 0 calc((100% - 45px)/10);height:44px;border-radius:8px;background:var(--key);box-shadow:0 1px 0 var(--sh);display:grid;place-items:center;font-size:22px;line-height:1}
+.kb .k sup{position:absolute;top:3px;right:5px;font-size:10px;color:var(--sub)}
+.kb .k.fn{background:var(--fn);flex-basis:calc((100% - 45px)/10*1.42)}
+.kb .k.sp{flex:1;font-size:14px;color:var(--sub)}
+.kb .k.ent{background:var(--ent);color:#fff;flex-basis:calc((100% - 45px)/10*1.1)}
+.kb .k.sm{font-size:16px}
+/* voice panel */
+.vp{height:244px;display:flex;flex-direction:column;padding:6px 10px 0}
+.vp .tr{display:flex;justify-content:space-between;gap:10px;font-size:15px;line-height:1.35;color:var(--tx);min-height:42px}
+.vp .tr.idle{color:var(--sub)}
+.vp .mid{flex:1;position:relative;display:grid;place-items:center}
+.vp .x{position:absolute;left:82px;width:36px;height:36px;border-radius:50%;background:var(--fn);display:grid;place-items:center;color:var(--tx)}
+.vp .ring{position:absolute;width:118px;height:118px}
+.vp .big{position:relative;width:74px;height:74px;border-radius:50%;background:var(--acc);display:grid;place-items:center;color:#fff;box-shadow:0 10px 24px -8px rgba(226,51,107,.6)}
+.vp .big b{width:22px;height:22px;border-radius:4px;background:#fff}
+.vp .cap{text-align:center;font-size:11px;color:var(--sub);margin-top:-2px}
+.vp .bot{display:flex;gap:6px;padding:8px 0 0}
+.vp .bot>span{height:40px;border-radius:9px;background:var(--fn);display:grid;place-items:center;color:var(--tx)}
+.vp .chip{flex:1.7;display:flex!important;gap:6px;justify-content:center;font-size:13px}
+.vp .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc)}
+.vp .bot .e{flex:1;background:var(--ent);color:#fff}.vp .bot .s{flex:1}.vp .bot .d{flex:1}
+/* emoji */
+.em{height:244px;display:flex;flex-direction:column}
+.em .tabs{display:flex;justify-content:space-between;padding:2px 6px 0;font-family:"Noto Color Emoji";font-size:21px}
+.em .tabs span{position:relative;padding-bottom:8px;opacity:.85}
+.em .tabs span.on{opacity:1}.em .tabs span.on::after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:3px;border-radius:2px;background:var(--acc)}
+.em .lab{font-size:11px;letter-spacing:.08em;color:var(--sub);padding:10px 8px 4px}
+.em .grid{display:grid;grid-template-columns:repeat(8,1fr);row-gap:6px;padding:0 4px;font-family:"Noto Color Emoji";font-size:28px;text-align:center}
+.em .bot{margin-top:auto;display:flex;gap:6px;padding:0 3px}
+.em .bot span{height:40px;border-radius:9px;background:var(--fn);display:grid;place-items:center;font-size:15px;color:var(--tx)}
+.em .bot .abc{width:58px}.em .bot .sp{flex:1;background:var(--key)}.em .bot .del{width:58px}
+
+/* ---------- phone frame ---------- */
+.ph{position:absolute;width:400px;padding:9px;border-radius:60px;background:linear-gradient(145deg,#4a4e55 0%,#1b1d21 22%,#2c2f35 50%,#121316 78%,#3d4047 100%);
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.18),0 70px 110px -40px rgba(8,20,30,.65),0 30px 50px -30px rgba(8,20,30,.5)}
+.ph .bz{border-radius:51px;background:#030304;padding:6px}
+.ph .sc{position:relative;border-radius:45px;overflow:hidden;height:800px;display:flex;flex-direction:column;background:#F4F1EC;color:var(--ink)}
+.ph .kb{width:100%}
+.ph .hw{position:absolute;right:-3px;width:4px;border-radius:0 3px 3px 0;background:linear-gradient(90deg,#1c1e22,#5d6168 60%,#2a2c31)}
+.ph .hw.v{top:20%;height:11%}.ph .hw.p{top:35%;height:6%}
+.sb{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;font-family:var(--and);font-weight:500;font-size:14px;position:relative}
+.sb .cam{position:absolute;left:50%;top:11px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:#07080a}
+.chat{flex:1;display:flex;flex-direction:column;font-family:var(--and)}
+.chat .hd{display:flex;align-items:center;gap:12px;padding:10px 18px 12px;border-bottom:1px solid var(--hair)}
+.chat .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:500}
+.chat .hd b{font-weight:500;font-size:16px;display:block}.chat .hd small{font-size:12px;color:var(--peacock)}
+.chat .th{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding:14px}
+.bub{max-width:80%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.35}
+.bub.in{align-self:flex-start;background:#fff;border-bottom-left-radius:5px}
+.bub.out{align-self:flex-end;background:var(--peacock);color:#fff;border-bottom-right-radius:5px}
+.inp{display:flex;align-items:center;gap:10px;margin:0 12px 10px;padding:8px 8px 8px 18px;background:#fff;border-radius:26px;font-size:16px}
+.inp span{flex:1}.inp .cur{display:inline-block;width:2px;height:18px;background:var(--rani);vertical-align:-3px;margin-left:1px}
+.inp .go{width:36px;height:36px;border-radius:50%;background:var(--rani);flex:none;position:relative}
+.inp .go::after{content:"";position:absolute;left:13px;top:11px;border-left:13px solid #fff;border-top:7px solid transparent;border-bottom:7px solid transparent}
+.dk .sc{background:#0B0C0E;color:#F1F2F4}.dk .chat .hd{border-color:rgba(255,255,255,.08)}.dk .bub.in{background:#1E2025}.dk .inp{background:#1E2025;color:#F1F2F4}
+
+/* ---------- HERO 1600x900 ---------- */
+#hero{width:1600px;height:900px;color:#fff;background:linear-gradient(180deg,#0B4F5C 0%,#167C82 26%,#4E6FA0 50%,#9A4C8E 72%,#E2336B 92%,#F28FAE 100%)}
+#hero .glow{position:absolute;border-radius:50%;filter:blur(80px);mix-blend-mode:soft-light}
+#hero .copy{position:absolute;left:96px;top:80px;width:780px}
+#hero .logo{font-family:var(--logo);font-size:44px;letter-spacing:.01em}
+#hero .eb{display:inline-block;margin-top:46px;padding:9px 20px;border-radius:99px;background:rgba(255,255,255,.88);color:var(--ink);font-family:var(--ui);font-weight:500;font-size:17px}
+#hero h1{font-weight:300;font-size:128px;line-height:.96;letter-spacing:-.035em;margin:26px 0 24px;white-space:nowrap;text-shadow:0 2px 40px rgba(11,40,60,.15)}
+#hero p{font-size:25px;line-height:1.45;color:rgba(255,255,255,.9);max-width:30ch}
+#hero .stats{display:flex;gap:56px;margin-top:40px}
+#hero .stats b{display:block;font-weight:300;font-size:46px;letter-spacing:-.02em;line-height:1}
+#hero .stats small{display:block;margin-top:10px;font-family:var(--ui);font-weight:500;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.78)}
+#hero .p1{left:860px;top:120px;transform:rotate(-4deg) scale(.84);transform-origin:top left}
+#hero .p2{left:1215px;top:84px;transform:rotate(4deg) scale(.84);transform-origin:top left}
+
+/* ---------- SCREENS 1600x540 ---------- */
+#screens{width:1600px;height:560px;background:var(--bg);padding:56px 64px 0}
+#screens h2,#speed h2{font-weight:300;font-size:58px;letter-spacing:-.03em;line-height:1;color:var(--ink)}
+#screens .row{display:flex;gap:28px;margin-top:40px}
+#screens .card{width:350px}
+#screens .shot{height:250px;border-radius:24px;overflow:hidden;box-shadow:0 2px 4px rgba(18,24,38,.04),0 26px 50px -30px rgba(18,24,38,.35);position:relative}
+#screens .shot .kb{transform:scale(.875);transform-origin:top left;width:400px}
+#screens h3{margin-top:22px;font-family:var(--ui);font-weight:500;font-size:20px;color:var(--ink)}
+#screens p{margin-top:6px;font-size:16px;line-height:1.45;color:var(--ink-2)}
+
+/* ---------- SPEED 1600x520 ---------- */
+#speed{width:1600px;height:560px;background:var(--bg);padding:56px 64px 0}
+#speed .sub{margin-top:14px;font-size:18px;color:var(--ink-2)}
+#speed .bars{margin-top:34px;display:grid;gap:14px}
+#speed .bar{display:grid;grid-template-columns:300px 1fr 170px;white-space:nowrap;align-items:center;gap:28px}
+#speed .nm b{display:block;font-family:var(--ui);font-weight:500;font-size:19px;color:var(--ink)}
+#speed .nm small{font-family:var(--ui);font-weight:500;font-size:13px;color:var(--muted);letter-spacing:.04em}
+#speed .tr{height:30px;border-radius:99px;background:var(--wall);overflow:hidden}
+#speed .fill{height:100%;border-radius:99px;background:var(--ink)}
+#speed .fill.loc{background:linear-gradient(90deg,#0E8C8C,#8E2E7C 70%,#E2336B)}
+#speed .ms{font-size:34px;letter-spacing:-.02em;color:var(--ink);text-align:right}
+#speed .tag{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:99px;background:rgba(14,140,140,.12);color:var(--deep);font-family:var(--ui);font-weight:500;font-size:11px;letter-spacing:.08em;text-transform:uppercase;vertical-align:3px}
+</style>
+</head>
+<body>
+<div id="mount"></div>
+<script>
+const I={
+ gear:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
+ mic:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+ shift:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 4l8 8h-4.5v7h-7v-7H4z"/></svg>',
+ del:'<svg width="26" height="22" viewBox="0 0 26 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 3h15v16H8l-6-8z"/><path d="M12 8l6 6M18 8l-6 6"/></svg>',
+ ent:'<svg width="26" height="22" viewBox="0 0 26 22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3v8H4M9 6l-5 5 5 5"/></svg>',
+ smile:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14a5 5 0 0 0 8 0"/><circle cx="9" cy="10" r=".6" fill="currentColor"/><circle cx="15" cy="10" r=".6" fill="currentColor"/></svg>',
+ kbd:'<svg width="24" height="20" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="2" width="22" height="16" rx="2"/><path d="M5 7h1M9 7h1M13 7h1M17 7h1M5 11h1M9 11h1M13 11h1M17 11h1M7 14h10" stroke-linecap="round"/></svg>',
+ x:'<svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>',
+ sp:'<svg width="22" height="10" viewBox="0 0 22 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2v5h18V2"/></svg>'};
+function kbTop(sugs){return `<div class="top"><span class="gear">${I.gear}</span><div class="sugs">${sugs.map((s,i)=>(i?'<i></i>':'')+`<span class="${i==1?'b':''}">${s}</span>`).join('')}</div><span class="mic">${I.mic}</span></div>`}
+function keys(caps){const n='1234567890';const r1=[...'qwertyuiop'].map((c,i)=>`<span class="k">${caps?c.toUpperCase():c}<sup>${n[i]}</sup></span>`).join('');
+ const r2=[...'asdfghjkl'].map(c=>`<span class="k">${caps?c.toUpperCase():c}</span>`).join('');
+ const r3=`<span class="k fn">${I.shift}</span>`+[...'zxcvbnm'].map(c=>`<span class="k">${caps?c.toUpperCase():c}</span>`).join('')+`<span class="k fn">${I.del}</span>`;
+ const r4=`<span class="k fn sm">?123</span><span class="k">,</span><span class="k fn">${I.smile}</span><span class="k sp">Reev</span><span class="k">.</span><span class="k ent">${I.ent}</span>`;
+ return `<div class="rows"><div class="r">${r1}</div><div class="r">${r2}</div><div class="r">${r3}</div><div class="r">${r4}</div></div>`}
+function ring(){let s='';for(let i=0;i<48;i++){const a=i/48*Math.PI*2,l=6+Math.abs(Math.sin(i*1.9)*Math.sin(i*.7+1))*16;const r=46;s+=`<line x1="${59+Math.cos(a)*r}" y1="${59+Math.sin(a)*r}" x2="${59+Math.cos(a)*(r+l)}" y2="${59+Math.sin(a)*(r+l)}"/>`}
+ return `<svg class="ring" viewBox="0 0 118 118" stroke="#E2336B" stroke-opacity=".55" stroke-width="2.2" stroke-linecap="round">${s}</svg>`}
+const KB={
+ type:(t,s=['that','the','th'],caps)=>`<div class="kb ${t}">${kbTop(s)}${keys(caps)}</div>`,
+ voice:(t,txt)=>`<div class="kb ${t}"><div class="vp"><div class="tr${txt?'':' idle'}"><span>${txt||'Listening…'}</span><span style="color:var(--sub)">${I.kbd}</span></div>
+   <div class="mid"><span class="x">${I.x}</span>${ring()}<span class="big"><b></b></span></div><div class="cap">Listening… tap to insert</div>
+   <div class="bot"><span class="chip">Parakeet</span><span class="s">${I.sp}</span><span class="d">${I.del}</span><span class="e">${I.ent}</span></div></div></div>`,
+ emoji:(t)=>`<div class="kb ${t}"><div class="top"><span class="gear">${I.gear}</span><div class="sugs"></div><span class="mic">${I.mic}</span></div><div class="em">
+   <div class="tabs"><span class="on">🕘</span><span>😀</span><span>👋</span><span>🐻</span><span>🍔</span><span>✈️</span><span>⚽</span><span>💡</span><span>❤️</span><span>🏳️</span></div>
+   <div class="lab">RECENT</div><div class="grid">${[...'🥺😂❤️👍🙏😊🔥😍🎉🙌✨😅🥳💯🤝😎'].filter(c=>c.trim()&&c!=='\ufe0f').slice(0,16).map(e=>`<span>${e}</span>`).join('')}</div>
+   <div class="bot"><span class="abc">ABC</span><span class="sp"></span><span class="del">${I.del}</span></div></div></div>`};
+function phone(cls,inner){return `<div class="ph ${cls}"><span class="hw v"></span><span class="hw p"></span><div class="bz"><div class="sc"><div class="sb"><span>9:41</span><span class="cam"></span><span>●●● 100%</span></div>${inner}</div></div></div>`}
+function chat(name,grad,bubs,input,kb){return `<div class="chat"><div class="hd"><span class="av" style="background:${grad}">${name[0]}</span><div><b>${name}</b><small>online</small></div></div><div class="th">${bubs.map(([w,t])=>`<div class="bub ${w}">${t}</div>`).join('')}</div><div class="inp"><span>${input}</span><span class="go"></span></div></div>${kb}`}
+
+const A={
+hero:()=>`<div class="board" id="hero">
+  <i class="glow" style="width:900px;height:900px;left:-200px;top:-420px;background:#9DF0E4"></i>
+  <i class="glow" style="width:800px;height:800px;right:-260px;bottom:-420px;background:#FFB3C8"></i>
+  <div class="copy"><div class="logo">REEV</div><span class="eb">Open-source voice keyboard for Android</span>
+   <h1>Speak.<br>Reev types.</h1>
+   <p>Hold the mic on your keyboard, say it, let go. Your words land in any app, transcribed on your own phone.</p>
+   <div class="stats"><div><b>0.49 s</b><small>release → text</small></div><div><b>Offline</b><small>on-device Parakeet</small></div><div><b>0</b><small>accounts · trackers</small></div></div></div>
+  ${phone('p1',chat('Maya','linear-gradient(135deg,#2FB3A8,#8E2E7C)',[['in','Still on for dinner tonight?'],['out','Yes! Table for two at 8'],['in','Perfect 🙌']],'See you at th<span class="cur"></span>',KB.type('',['that','the','there'])))}
+  ${phone('p2 dk',chat('Team','linear-gradient(135deg,#E2336B,#8E2E7C)',[['in','Can someone send the notes from today?'],['out','Sending them now. Quick summary: we ship Friday, Sam owns QA.']],'<span style="opacity:.5">Message</span>',KB.voice('dark','Running ten minutes late, go ahead and order for me.')))}
+ </div>`,
+screens:()=>`<div class="board" id="screens"><h2>One keyboard. <em>Four moods.</em></h2><div class="row">
+  <div class="card"><div class="shot">${KB.type('',['tonight','toni','tonic'])}</div><h3>Type</h3><p>Glide typing, smart suggestions, long-press accents and digits.</p></div>
+  <div class="card"><div class="shot">${KB.type('dark',['I\'ll','we\'ll','well'],true)}</div><h3>Dark mode</h3><p>Follows the system, or pin it to light or dark.</p></div>
+  <div class="card"><div class="shot">${KB.voice('dark','Running ten minutes late, go ahead and order for me.')}</div><h3>Talk</h3><p>Hold to talk, tap to lock. Text lands where your cursor is.</p></div>
+  <div class="card"><div class="shot">${KB.emoji('dark')}</div><h3>Emoji</h3><p>1,923 emoji across 9 categories, plus recents.</p></div>
+ </div></div>`,
+speed:()=>{const R=[['Cartesia Ink-2','cloud · realtime',106],['Smallest AI Pulse','cloud · realtime',188],['ElevenLabs Scribe v2','cloud · realtime',473],['Parakeet Ultra','on-device · offline',494,1],['Parakeet TDT v2','on-device · offline',501,1]];
+ return `<div class="board" id="speed"><h2>Let go, <em>and it's there.</em></h2><p class="sub">Release → final text for an 8.6 s utterance, streamed in real time through the same path the mic uses. Lower is better.</p>
+ <div class="bars">${R.map(([n,s,v,l])=>`<div class="bar"><div class="nm"><b>${n}${l?'<span class="tag">private</span>':''}</b><small>${s}</small></div><div class="tr"><div class="fill${l?' loc':''}" style="width:${v/600*100}%"></div></div><div class="ms">${v} ms</div></div>`).join('')}</div></div>`}};
+const a=new URLSearchParams(location.search).get('a')||'hero';document.getElementById('mount').innerHTML=A[a]();
+</script>
+</body>
+</html>

@@ -16,3 +16,5 @@ tools/local_*
 .DS_Store
 captures/
 .lexicon-cache/
+*.aab
+store/raw/

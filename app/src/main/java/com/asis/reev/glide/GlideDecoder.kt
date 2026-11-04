@@ -1,13 +1,19 @@
 /*
  * Glide (gesture/swipe) typing decoder for Reev.
  *
- * Ported and adapted from FlorisBoard's StatisticalGlideTypingClassifier
- * (Copyright (C) The FlorisBoard Contributors, Apache License 2.0), which is itself based on
- * Étienne Desticourt's statistical classifier for AnySoftKeyboard
- * (https://github.com/AnySoftKeyboard/AnySoftKeyboard/pull/1870, Apache License 2.0),
- * following the SHARK2 shape+location approach.
+ * Adapted from FlorisBoard's StatisticalGlideTypingClassifier
+ * (https://github.com/florisboard/florisboard)
+ * Copyright (C) 2025 The FlorisBoard Contributors
+ * which is based on Étienne Desticourt's statistical gesture classifier for AnySoftKeyboard
+ * (https://github.com/AnySoftKeyboard/AnySoftKeyboard/pull/1870), following the SHARK2 shape+location approach.
  *
- * Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is
+ * distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ * Modified for Reev, 2026: ported to a dependency-free Kotlin class (no Android/FlorisBoard types),
+ * reworked key-centre geometry, pruning and scoring constants for Reev's layout and vocabulary.
  */
 package com.asis.reev.glide
 

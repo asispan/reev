@@ -18,7 +18,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
 
-/** Wispr-Flow-like dictation panel: one big push-to-talk button. */
+/** Dictation panel: one big push-to-talk button (hold to talk, tap to lock). */
 class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
     enum class State { IDLE, RECORDING, LATCHED, PROCESSING }

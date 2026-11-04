@@ -3,6 +3,7 @@ package com.asis.reev.lm
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.BeforeClass
 import org.junit.Test
 import java.io.File
@@ -67,7 +68,8 @@ class LexiconTest {
     /** Held-out Tatoeba sentences (never seen by the build): strip apostrophes and see what Reev restores. */
     @Test fun heldOutApostropheRestoration() {
         val f = File("../.lexicon-cache/heldout_en.txt")
-        if (!f.exists()) { println("held-out file missing; run tools/build_lexicon.py"); return }
+        // Corpus evaluation: needs the held-out set from tools/build_lexicon.py. Reported as skipped, not passed, without it.
+        Assume.assumeTrue("held-out file missing; run tools/build_lexicon.py", f.exists())
         val tok = Regex("[a-z]+(?:'[a-z]+)?")
         var shouldFix = 0; var fixed = 0; var wrongFix = 0; var plainSeen = 0; var nextHits = 0; var nextTotal = 0
         f.readLines().take(40000).forEach { line ->

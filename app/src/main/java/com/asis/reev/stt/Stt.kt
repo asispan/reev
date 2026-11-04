@@ -49,14 +49,20 @@ object Pcm {
 }
 
 /** Growable PCM buffer. */
-class PcmBuffer {
+/** Growable PCM store for one dictation, capped so a forgotten tap-to-lock can't exhaust memory. */
+class PcmBuffer(private val maxSamples: Int = MAX_SAMPLES) {
+    companion object { const val MAX_SAMPLES = 16000 * 60 * 5 } // 5 minutes ≈ 9.6 MB
     private var data = ShortArray(16000 * 30)
     var size = 0
         private set
+    /** True once the cap is hit; further audio is dropped. */
+    val full: Boolean @Synchronized get() = size >= maxSamples
 
     @Synchronized fun add(s: ShortArray) {
-        if (size + s.size > data.size) data = data.copyOf(maxOf(data.size * 2, size + s.size))
-        System.arraycopy(s, 0, data, size, s.size); size += s.size
+        val n = minOf(s.size, maxSamples - size)
+        if (n <= 0) return
+        if (size + n > data.size) data = data.copyOf(minOf(maxSamples, maxOf(data.size * 2, size + n)))
+        System.arraycopy(s, 0, data, size, n); size += n
     }
 
     @Synchronized fun snapshot(): ShortArray = data.copyOf(size)

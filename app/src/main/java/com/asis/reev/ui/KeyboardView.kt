@@ -46,6 +46,8 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
     var glideEnabled = true
 
     /** Show the globe (switch keyboard) key in the bottom-left corner. */
+    /** Off in password / PIN fields so pressed characters aren't magnified on screen. */
+    var previewsEnabled = true
     var showSwitchKey = false
         set(v) { if (field != v) { field = v; rebuildRows() } }
 
@@ -301,7 +303,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         when (k.type) {
             KeyType.CHAR -> {
                 val label = if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.label.uppercase() else k.label
-                overlay?.showPreview(overlayRect(k), label)
+                if (previewsEnabled) overlay?.showPreview(overlayRect(k), label)
                 if (k.popup.isNotEmpty()) handler.postDelayed(longPressRunnable, 300)
             }
             KeyType.DELETE -> {

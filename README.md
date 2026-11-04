@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>The open-source Android keyboard you can talk to.</b><br>
+  <b>The open-source (AGPL-3.0) Android keyboard you can talk to.</b><br>
   English &amp; emoji typing, plus push-to-talk dictation that runs on your phone or in the cloud.
 </p>
 
@@ -13,6 +13,7 @@
   <img alt="On-device" src="https://img.shields.io/badge/on--device-NVIDIA%20Parakeet-76B900?style=flat-square&logo=nvidia&logoColor=white">
   <img alt="Offline" src="https://img.shields.io/badge/works-offline-0E8C8C?style=flat-square&labelColor=121826">
   <img alt="No overlays" src="https://img.shields.io/badge/floating%20bubbles-none-0E8C8C?style=flat-square&labelColor=121826">
+  <img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-E2336B?style=flat-square&labelColor=121826">
 </p>
 
 <br>
@@ -51,7 +52,7 @@ Release, and polished text lands where your cursor is: punctuated, capitalised, 
 <td width="50%" valign="top">
 
 **🔒 Private by default**<br>
-Parakeet Ultra runs entirely on the phone: no network, no account, nothing leaves the device.
+Parakeet Ultra runs entirely on the phone: no network, no account, nothing leaves the device. The mic is off in password and incognito fields, and any API keys you add are encrypted with an Android Keystore key.
 
 </td>
 <td width="50%" valign="top">
@@ -71,7 +72,7 @@ On-device NVIDIA Parakeet, or ElevenLabs, Cartesia, Smallest AI and Sarvam over 
 <td valign="top">
 
 **⌨️ A real keyboard, too**<br>
-Suggestions, gentle autocorrect, long-press accents and digits, cursor swipe on the space bar, and 1,923 emoji.
+Glide typing, next-word predictions, context-aware suggestions (we'll vs well), optional Hinglish, long-press accents and digits, cursor swipe on the space bar, and 1,923 emoji.
 
 </td>
 </tr>
@@ -109,7 +110,7 @@ No floating bubbles, overlays or toasts. Reev never draws outside its own keyboa
 
 <br>
 
-Measured on a OnePlus 15 (Snapdragon 8 Elite Gen 5, Android 16). Each engine got the same 8.6 s utterance, streamed at real-time pace through the same code path the mic uses (`BenchReceiver`).
+Measured on one Snapdragon 8 Elite Gen 5 phone running Android 16. Each engine got the same 8.6 s utterance, streamed at real-time pace through the same code path the mic uses (`BenchReceiver`). These are single runs on one device, so treat them as indicative rather than a distribution; cloud numbers also depend on the network.
 
 | Engine | First partial | Release → final | Transcript |
 |---|---|---|---|
@@ -139,8 +140,11 @@ Real-mic check (audio played from a speaker into the phone's mic): Parakeet Ultr
 
 ```bash
 # JDK 21 · Android SDK 36 · AGP 8.13 · Gradle 9
-./tools/fetch_deps.sh        # one-time: sherpa-onnx AAR → app/libs
-./gradlew assembleRelease    # or: ./tools/deploy.sh to build + install over USB
+./tools/fetch_deps.sh        # one-time: sherpa-onnx AAR → app/libs (pinned + SHA-256 checked)
+./gradlew assembleDebug      # or: ./tools/deploy.sh to build + install over USB
+
+# release builds need your own upload key; they refuse to fall back to the debug key
+REEV_KEYSTORE=/path/to/upload.jks REEV_KEYSTORE_PASSWORD=... ./gradlew bundleRelease
 
 # optional (debug builds): push API keys from env vars instead of typing them
 REEV_CARTESIA_KEY=... python3 tools/inject_keys.py
@@ -176,7 +180,7 @@ Not with the Parakeet engines; they're fully offline. With a cloud engine, audio
 <details>
 <summary><b>Where are my API keys stored?</b></summary>
 <br>
-In the app's private storage on your phone, and they're only sent to the matching provider. For a wide public release you'd want short-lived tokens from a backend instead.
+In the app's private storage on your phone, encrypted with an AES-256-GCM key that never leaves the Android Keystore. They're excluded from backups, hidden from screenshots of the settings screen, and only sent to the matching provider. Clear the field to delete a key. Encryption at rest doesn't protect against a rooted or compromised phone, so use a scoped, spend-limited key where your provider offers one.
 </details>
 
 <details>
@@ -188,8 +192,9 @@ Android 8.0+ phones on arm64 or armv7. On-device dictation works best on recent 
 ## Honest limitations
 
 - Parakeet isn't a streaming model. Live text comes from re-decoding the growing buffer every 0.7 s, which costs battery on long dictations. Reev doesn't use the phone's NPU yet.
-- No glide typing or next-word prediction yet, and English only.
-- Release APKs are currently signed with a debug key, so they're for sideloading.
+- English only (with optional Hinglish suggestions); no other languages yet.
+- Cloud engines use your own long-lived provider key on the device. There's no token broker, by design (no Reev server).
+- The benchmark is from a single phone; there's no automated on-device performance suite yet.
 - Emoji come without skin-tone variants for now.
 
 ## Credits
@@ -205,6 +210,10 @@ Ideas for dictation polish (keeping the model warm, removing fillers, detecting 
 - Hinglish vocabulary and word pairs: [Hinglish Everyday Conversations 1M](https://huggingface.co/datasets/Abhishekcr448/Hinglish-Everyday-Conversations-1M) by Abhishek Khatri (MIT; synthetic GPT-4o-mini conversations)
 - Emoji data: Unicode `emoji-test.txt` v18
 
-Models are downloaded at runtime, not bundled.
+Models are downloaded at runtime from a pinned commit, with every file checked against its SHA-256. They aren't bundled. Full notices and licence texts: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+## License
+
+Reev's source code is licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`). You can read, run, modify and share it. If you distribute Reev or a modified version, or offer a modified version to users over a network, you must release your complete source under the same licence. The lexicon data in `app/src/main/assets/lexicon/` is licensed under CC BY-SA 4.0. Third-party components keep their own licences; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 <p align="center"><sub>Made in Bangalore · speak freely</sub></p>

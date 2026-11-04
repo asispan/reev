@@ -5,13 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:usesCleartextTraffic="false"
         android:allowBackup="false"
         android:label="Reev"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:largeHeap="true"
-        android:theme="@style/FlowTheme">
+        android:theme="@style/ReevTheme">
 
         <service
             android:name=".ReevService"
@@ -40,6 +41,6 @@
             android:name=".PermissionActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:theme="@style/FlowTheme.Translucent" />
+            android:theme="@style/ReevTheme.Translucent" />
     </application>
 </manifest>

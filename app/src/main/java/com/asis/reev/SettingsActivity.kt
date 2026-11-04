@@ -35,6 +35,24 @@ import com.asis.reev.ui.dpi
 class SettingsActivity : Activity() {
     private lateinit var prefs: Prefs
     private val main = Handler(Looper.getMainLooper())
+
+    private class ModelViews(val bar: ProgressBar, val status: TextView, val btn: Button)
+    private val modelViews = HashMap<LocalModel, ModelViews>()
+
+    /** Downloads run in ModelManager (app scope); this screen only observes, so rotation or leaving can't leak it. */
+    private val downloadListener = object : ModelManager.Listener {
+        override fun onProgress(m: LocalModel, done: Long, total: Long) = main.post {
+            modelViews[m]?.let { v ->
+                v.bar.visibility = View.VISIBLE; v.btn.text = "Cancel"
+                v.bar.progress = (done * 1000 / total).toInt()
+                v.status.text = "%.0f / %.0f MB".format(done / 1e6, total / 1e6)
+            }
+        }.let {}
+        override fun onDone(m: LocalModel, error: String?) = main.post {
+            if (error == null) { prefs.localModel = m.id; prefs.engine = Engine.LOCAL; Engines.warm(this@SettingsActivity, Engine.LOCAL); render() }
+            else modelViews[m]?.let { v -> v.status.text = "Download failed: $error"; v.btn.text = "Retry"; v.bar.visibility = View.GONE }
+        }.let {}
+    }
     private lateinit var col: LinearLayout
     private val fg = Color.parseColor("#F3F3F6")
     private val sub = Color.parseColor("#9A9CA6")
@@ -43,10 +61,13 @@ class SettingsActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // API keys are on this screen: keep it out of screenshots, screen recordings and the recents preview.
+        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         prefs = Prefs(this)
     }
 
-    override fun onResume() { super.onResume(); render() }
+    override fun onResume() { super.onResume(); ModelManager.addListener(downloadListener); render() }
+    override fun onPause() { ModelManager.removeListener(downloadListener); super.onPause() }
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) refreshSetup() }
 
     private var setupBox: LinearLayout? = null
@@ -62,7 +83,7 @@ class SettingsActivity : Activity() {
         }
 
         col.addView(text("Reev", 30f, fg, bold = true))
-        col.addView(text("English + emoji keyboard with Wispr-style push-to-talk dictation.", 14f, sub).also { it.setPadding(0, dpi(4), 0, dpi(18)) })
+        col.addView(text("English + emoji keyboard with push-to-talk dictation.", 14f, sub).also { it.setPadding(0, dpi(4), 0, dpi(18)) })
 
         // ---- test
         val test = section("Try it")
@@ -125,6 +146,14 @@ class SettingsActivity : Activity() {
         toggle(typ, "Double-space for period", prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }
         toggle(typ, "Remove filler words (um, uh) from dictation", prefs.removeFillers) { prefs.removeFillers = it }
         toggle(typ, "Mic button starts listening immediately", prefs.autoStartVoice) { prefs.autoStartVoice = it }
+        typ.addView(button("Forget learned words") {
+            Suggest.forgetAll(this)
+            android.app.AlertDialog.Builder(this).setMessage("Learned words deleted from this phone.").setPositiveButton("OK", null).show()
+        }, spaced())
+        typ.addView(button("Open-source licences") {
+            val txt = runCatching { assets.open("licenses.txt").bufferedReader().readText() }.getOrDefault("")
+            android.app.AlertDialog.Builder(this).setTitle("Open-source licences").setMessage(txt).setPositiveButton("Close", null).show()
+        }, spaced())
 
         col.addView(text("v${packageManager.getPackageInfo(packageName, 0).versionName}" +
             (if (LocalParakeet.lastLoadMs > 0) " · model load ${LocalParakeet.lastLoadMs} ms" else "") +
@@ -179,20 +208,10 @@ class SettingsActivity : Activity() {
             }
             if (ModelManager.downloading != null) { ModelManager.cancel(); return@setOnClickListener }
             bar.visibility = View.VISIBLE; btn.text = "Cancel"
-            Thread {
-                try {
-                    ModelManager.download(this, m) { done, total ->
-                        main.post {
-                            bar.progress = (done * 1000 / total).toInt()
-                            status.text = "%.0f / %.0f MB".format(done / 1e6, total / 1e6)
-                        }
-                    }
-                    main.post { prefs.localModel = m.id; prefs.engine = Engine.LOCAL; Engines.warm(this, Engine.LOCAL); render() }
-                } catch (e: Throwable) {
-                    main.post { status.text = "Download failed: ${e.message}"; btn.text = "Retry"; bar.visibility = View.GONE }
-                }
-            }.start()
+            ModelManager.start(this, m)
         }
+        modelViews[m] = ModelViews(bar, status, btn)
+        if (ModelManager.downloading == m) { bar.visibility = View.VISIBLE; btn.text = "Cancel" }
         top.addView(btn)
         box.addView(top); box.addView(status); box.addView(bar)
         parent.addView(box)
@@ -201,7 +220,7 @@ class SettingsActivity : Activity() {
     private fun keyField(parent: LinearLayout, e: Engine) {
         parent.addView(text(e.title, 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
         val et = EditText(this).apply {
-            setText(prefs.apiKey(e)); hint = "API key"; setTextColor(fg); setHintTextColor(sub); textSize = 14f
+            setText(prefs.apiKey(e)); hint = "API key (clear the field to delete it)"; setTextColor(fg); setHintTextColor(sub); textSize = 14f
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
@@ -237,6 +256,8 @@ class SettingsActivity : Activity() {
     private fun text(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = s; textSize = size; setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD
     }
+
+    private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(10) }
 
     private fun button(s: String, onClick: () -> Unit) = Button(this).apply {
         text = s; isAllCaps = false; setTextColor(Color.WHITE); textSize = 14f

@@ -2,6 +2,7 @@ package com.asis.reev.stt
 
 import android.util.Base64
 import android.util.Log
+import com.asis.reev.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -38,9 +39,11 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
     private var ws: WebSocket? = null
     private var open = false
     private val pending = ArrayList<ShortArray>()
+    private var pendingSamples = 0
     @Volatile protected var finished = false
     @Volatile protected var closed = false
-    private var acc = ShortArray(0)
+    private val acc by lazy { ShortArray(frameSamples) }
+    private var accN = 0
 
     /** Bytes of audio per frame sent to the server. */
     protected open val frameSamples = 1600 // 100 ms
@@ -58,26 +61,26 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
                     ws = webSocket; open = true
                     onOpenSend(webSocket)
                     pending.forEach { sendAudio(webSocket, it) }
-                    pending.clear()
+                    pending.clear(); pendingSamples = 0
                     if (finished) { flushAcc(webSocket); sendFinish(webSocket) }
                 }
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (closed) return
-                Log.d(tag, "<- ${text.take(300)}")
+                if (BuildConfig.DEBUG) Log.d(tag, "<- ${text.length} chars")
                 val j = runCatching { JSONObject(text) }.getOrNull() ?: return
                 onText(j, text)
             }
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {}
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(tag, "closing $code $reason")
+                if (BuildConfig.DEBUG) Log.i(tag, "closing $code")
                 webSocket.close(1000, null)
                 if (!closed) onServerClosed(code, reason)
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (closed) return
                 val body = runCatching { response?.body?.string() }.getOrNull()
-                Log.e(tag, "failure ${response?.code} $body", t)
+                Log.e(tag, "failure ${response?.code} ${t.javaClass.simpleName}")
                 fail(when (response?.code) {
                     401, 403 -> "$tag: invalid API key (${response.code})"
                     null -> "$tag: ${t.message ?: "network error"}"
@@ -96,18 +99,26 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
     protected open fun currentFinal(): String = ""
 
     private fun flushAcc(ws: WebSocket) {
-        if (acc.isNotEmpty()) { sendAudio(ws, acc); acc = ShortArray(0) }
+        if (accN > 0) { sendAudio(ws, acc.copyOf(accN)); accN = 0 }
     }
 
     override fun feed(pcm: ShortArray) {
         if (finished || closed) return
+        var overflow = false
         synchronized(lock) {
-            acc += pcm
-            if (acc.size < frameSamples) return
-            val frame = acc; acc = ShortArray(0)
-            val w = ws
-            if (open && w != null) sendAudio(w, frame) else pending += frame
+            var i = 0
+            while (i < pcm.size) {
+                val n = minOf(pcm.size - i, frameSamples - accN)
+                System.arraycopy(pcm, i, acc, accN, n); accN += n; i += n
+                if (accN < frameSamples) break
+                val frame = acc.copyOf(); accN = 0
+                val w = ws
+                if (open && w != null) sendAudio(w, frame)
+                else if (pendingSamples + frame.size <= MAX_PENDING) { pending += frame; pendingSamples += frame.size }
+                else overflow = true
+            }
         }
+        if (overflow) fail("$tag: couldn't connect")
     }
 
     override fun finish() {
@@ -134,6 +145,8 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
 
     companion object {
         private val grace = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+        /** Audio held while the socket is still connecting: 15 s, then give up instead of growing forever. */
+        private const val MAX_PENDING = 16000 * 15
     }
 
     protected fun partial(t: String) { if (!closed) cb.onPartial(t) }

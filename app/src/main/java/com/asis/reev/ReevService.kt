@@ -47,6 +47,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     // editor state
     private var noSuggest = false
     private var noLearn = false
+    /** Password, PIN or incognito field: no dictation, no suggestions, no learning. */
+    private var sensitive = false
     private var lastSpaceAt = 0L
     private var autoSpaced = false
     private var lastCorrection: Pair<String, String>? = null // original -> corrected (+space)
@@ -140,8 +142,15 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             variation == InputType.TYPE_TEXT_VARIATION_URI || variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
             variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0
+        val numericPassword = cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        val incognito = (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
+        sensitive = isPassword || numericPassword || incognito
+        if (sensitive) noSuggest = true
         // Incognito / sensitive fields: never learn words from them.
-        noLearn = noSuggest || (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
+        noLearn = noSuggest || incognito
+        if (this::topBar.isInitialized) topBar.micEnabled = !sensitive
+        keyboard.previewsEnabled = !(isPassword || numericPassword)
+        if (sensitive) { cancelVoice(); if (this::topBar.isInitialized && topBar.voiceMode) showKeys() }
         val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
         keyboard.enterAction = if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0) 0
@@ -425,7 +434,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             }
             val t0 = System.currentTimeMillis()
             val cands = glideDecoder?.decode(cx, cy, n, 5) ?: emptyList()
-            android.util.Log.d("ReevGlide", "decoded ${n} pts in ${System.currentTimeMillis() - t0} ms -> $cands")
+            if (BuildConfig.DEBUG) android.util.Log.d("ReevGlide", "decoded $n pts in ${System.currentTimeMillis() - t0} ms, ${cands.size} candidates")
             main.post { commitGlide(cands, shift) }
         }
     }
@@ -452,6 +461,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     }
 
     override fun onMic() {
+        if (sensitive) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             startActivity(Intent(this, PermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
@@ -615,6 +625,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     override fun onDestroy() {
         cancelVoice()
+        prefs.sp.unregisterOnSharedPreferenceChangeListener(themeListener)
+        glideExec.shutdownNow()
         super.onDestroy()
     }
 }

@@ -23,8 +23,34 @@ class Prefs(ctx: Context) {
         get() = Engine.from(sp.getString("engine", Engine.LOCAL.id))
         set(v) = sp.edit().putString("engine", v.id).apply()
 
-    fun apiKey(e: Engine): String = sp.getString("key_${e.id}", "")?.trim() ?: ""
-    fun setApiKey(e: Engine, v: String) = sp.edit().putString("key_${e.id}", v.trim()).apply()
+    /**
+     * API keys are stored encrypted (see [KeyVault]) under "ekey_<engine>". A plaintext "key_<engine>" left by
+     * an older build or by tools/inject_keys.py is encrypted on first read and the plaintext removed.
+     */
+    @Synchronized fun apiKey(e: Engine): String {
+        val field = "ekey_${e.id}"
+        sp.getString(field, null)?.let { blob ->
+            val k = KeyVault.decrypt(blob, field)
+            if (k == null) sp.edit().remove(field).commit()   // unrecoverable: drop it, the user re-enters the key
+            return k?.trim() ?: ""
+        }
+        val legacy = sp.getString("key_${e.id}", null)?.trim()
+        if (!legacy.isNullOrEmpty()) {
+            // Migrate: commit the encrypted copy first, and only then delete the plaintext.
+            val ok = sp.edit().putString(field, KeyVault.encrypt(legacy, field)).commit()
+            if (ok) sp.edit().remove("key_${e.id}").commit()
+            return legacy
+        }
+        return ""
+    }
+
+    @Synchronized fun setApiKey(e: Engine, v: String) {
+        val t = v.trim()
+        val field = "ekey_${e.id}"
+        val ed = sp.edit().remove("key_${e.id}")
+        if (t.isEmpty()) ed.remove(field) else ed.putString(field, KeyVault.encrypt(t, field))
+        ed.apply()
+    }
 
     var haptics: Boolean
         get() = sp.getBoolean("haptics", true)

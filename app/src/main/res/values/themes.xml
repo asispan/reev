@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="FlowTheme" parent="android:Theme.Material.NoActionBar">
+    <style name="ReevTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:colorAccent">#E2336B</item>
         <item name="android:windowBackground">#0F1012</item>
         <item name="android:statusBarColor">#0F1012</item>
         <item name="android:navigationBarColor">#0F1012</item>
     </style>
-    <style name="FlowTheme.Translucent" parent="android:Theme.Translucent.NoTitleBar">
+    <style name="ReevTheme.Translucent" parent="android:Theme.Translucent.NoTitleBar">
         <item name="android:windowNoTitle">true</item>
     </style>
 </resources>

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Fetch pinned native deps (checksum-verified)
+        run: ./tools/fetch_deps.sh
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Lint
+        run: ./gradlew --no-daemon lintDebug
+
+      - name: Debug build
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Release build refuses to sign without the upload key
+        run: |
+          if ./gradlew --no-daemon assembleRelease; then
+            echo "assembleRelease succeeded without signing env vars: it must fail closed" >&2
+            exit 1
+          fi

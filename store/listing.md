@@ -30,7 +30,7 @@ CLEAN DICTATION
 Filler words like "um" and "uh" are removed, and capitalisation and punctuation are tidied.
 
 PERMISSIONS
-• Microphone: only while you hold the mic button.
+• Microphone: only during a dictation you start (hold to talk, or tap to lock). Never in password fields.
 • Internet: to download the on-device model once, and for cloud engines if you choose one.
 
 Open source: github.com/asispan/reev

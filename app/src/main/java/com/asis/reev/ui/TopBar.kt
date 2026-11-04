@@ -42,6 +42,9 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
         set(v) { field = v; invalidate() }
     var transcriptPending = false
         set(v) { field = v; invalidate() }
+    /** False in password / PIN / incognito fields: the mic is hidden and taps on it are ignored. */
+    var micEnabled = true
+        set(v) { field = v; invalidate() }
 
     private val h = ctx.dp(48f)
     private val iconW = ctx.dp(48f)
@@ -69,8 +72,10 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
         Icons.gear(c, iconW / 2, cy, h * 0.5f, stroke)
         // mic (accent pill)
         val mx = width - iconW / 2
-        c.drawCircle(mx, cy, h * 0.36f, accentFill)
-        Icons.mic(c, mx, cy, h * 0.52f, micFill, accentStroke)
+        if (micEnabled) {
+            c.drawCircle(mx, cy, h * 0.36f, accentFill)
+            Icons.mic(c, mx, cy, h * 0.52f, micFill, accentStroke)
+        }
         // suggestions
         val l = iconW; val r = width - iconW
         val n = 3

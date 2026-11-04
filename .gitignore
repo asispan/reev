@@ -18,3 +18,13 @@ captures/
 .lexicon-cache/
 *.aab
 store/raw/
+# More secret shapes that must never be committed
+*.pem
+*.p12
+*.pfx
+*.p8
+*.key
+google-services.json
+*service-account*.json
+*credentials*.json
+shared_prefs/

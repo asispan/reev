@@ -66,7 +66,8 @@ class GlideDecoderTest {
         val rnd = Random(1)
         for (word in listOf("hello", "help", "pool", "poll", "the", "you", "and")) {
             val (xs, ys) = swipe(word, byC, rnd, 0f)
-            println("clean $word -> ${dec.decode(xs, ys, xs.size, 3)}")
+            val top3 = dec.decode(xs, ys, xs.size, 3)
+            assertTrue("clean swipe of '$word' gave $top3", word in top3)
         }
     }
 }

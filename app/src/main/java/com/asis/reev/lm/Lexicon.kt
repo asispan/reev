@@ -95,7 +95,13 @@ class Lexicon(
     /** In the built-in dictionary (not just learned). */
     fun inDictionary(w: String) = ids.containsKey(norm(w))
 
-    fun unigram(w: String): Long = (ids[w]?.let { if (allowed(it)) uni[it] else 0L } ?: 0L) + (learned[w] ?: 0L) * 2_000_000L
+    fun unigram(w: String): Long {
+        val base = ids[w]?.let { if (allowed(it)) uni[it] else 0L } ?: 0L
+        val n = learned[w] ?: 0L
+        // Words outside the dictionary need a big boost to surface at all; dictionary words only get a
+        // gentle personal nudge (≤3×) so one use of "well" can't drown context ("I think we'll").
+        return if (base == 0L) n * 2_000_000L else (base * (1.0 + minOf(2.0, 0.1 * n))).toLong()
+    }
 
     fun bigram(prev: String?, w: String): Int {
         if (prev == null) return 0

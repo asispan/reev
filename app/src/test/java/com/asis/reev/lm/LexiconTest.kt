@@ -25,6 +25,13 @@ class LexiconTest {
         println("its|and -> ${lex.suggest("its", "and")}   were|you -> ${lex.suggest("were", "you")}")
     }
 
+    @Test fun learningDoesNotDrownContext() {
+        repeat(5) { lex.learned["well"] = (lex.learned["well"] ?: 0L) + 1 }
+        val s = lex.suggest("well", "think")
+        lex.learned.remove("well")
+        assertEquals(s.toString(), "we'll", s.first())
+    }
+
     @Test fun contextFixes() {
         assertEquals("we'll", lex.retroCorrect("well", "see"))
         assertNull(lex.retroCorrect("well", "done"))

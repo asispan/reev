@@ -29,6 +29,8 @@ class Suggest(ctx: Context) {
         }
     }
 
+    fun close() = sp.unregisterOnSharedPreferenceChangeListener(clearListener)
+
     @Volatile var ready = false
         private set
 

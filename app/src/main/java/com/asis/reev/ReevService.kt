@@ -49,6 +49,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private var noLearn = false
     /** Password, PIN or incognito field: no dictation, no suggestions, no learning. */
     private var sensitive = false
+    /** Bumped on every new editor: async results (glide) from a previous field are dropped. */
+    private var inputGen = 0
     private var lastSpaceAt = 0L
     private var autoSpaced = false
     private var lastCorrection: Pair<String, String>? = null // original -> corrected (+space)
@@ -87,8 +89,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         builtPalette = pal
         emoji = null
         overlay = OverlayView(this, pal)
-        topBar = TopBar(this, pal).also { it.listener = this }
-        keyboard = KeyboardView(this, pal).also { it.listener = this; it.overlay = overlay }
+        topBar = TopBar(this, pal).also { it.listener = this; it.micEnabled = !sensitive }
+        keyboard = KeyboardView(this, pal).also { it.listener = this; it.overlay = overlay; it.previewsEnabled = !sensitive }
         voice = VoicePanel(this, pal).also { it.listener = this }
         content = FrameLayout(this)
         content.addView(keyboard)
@@ -142,14 +144,16 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             variation == InputType.TYPE_TEXT_VARIATION_URI || variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
             variation == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
             (info.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0
+        inputGen++
         val numericPassword = cls == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
         val incognito = (info.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0
         sensitive = isPassword || numericPassword || incognito
         if (sensitive) noSuggest = true
         // Incognito / sensitive fields: never learn words from them.
         noLearn = noSuggest || incognito
-        if (this::topBar.isInitialized) topBar.micEnabled = !sensitive
-        keyboard.previewsEnabled = !(isPassword || numericPassword)
+        topBar.micEnabled = !sensitive
+        keyboard.previewsEnabled = !sensitive
+        if (sensitive) topBar.suggestions = emptyList()
         if (sensitive) { cancelVoice(); if (this::topBar.isInitialized && topBar.voiceMode) showKeys() }
         val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
         keyboard.enterAction = if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
@@ -426,6 +430,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         val layoutKey = "${keyboard.width}x${keyboard.height}:${keyboard.showSwitchKey}"
         val centers = if (layoutKey != glideLayoutKey || glideDecoder == null) keyboard.letterCenters() else null
         val shift = keyboard.shift
+        val gen = inputGen
         glideExec.execute {
             if (centers != null) {
                 if (!suggest.ready || centers.isEmpty()) return@execute
@@ -435,7 +440,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             val t0 = System.currentTimeMillis()
             val cands = glideDecoder?.decode(cx, cy, n, 5) ?: emptyList()
             if (BuildConfig.DEBUG) android.util.Log.d("ReevGlide", "decoded $n pts in ${System.currentTimeMillis() - t0} ms, ${cands.size} candidates")
-            main.post { commitGlide(cands, shift) }
+            main.post { if (gen == inputGen && !sensitive) commitGlide(cands, shift) }
         }
     }
 
@@ -527,7 +532,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         })
         session = s
         peakLevel = 0f
-        val rec = MicRecorder(onChunk = { s.feed(it) }, onLevel = { lv -> if (lv > peakLevel) peakLevel = lv; main.post { voice.pushLevel(lv) } })
+        val rec = MicRecorder(onChunk = { s.feed(it) }, onLevel = { lv -> if (lv > peakLevel) peakLevel = lv; main.post { voice.pushLevel(lv) } },
+            onError = { main.post { if (id == sessionId) { cancelVoice(); voice.hint = "Microphone stopped unexpectedly"; topBar.status = "Error" } } })
         if (!rec.start()) {
             s.cancel(); session = null
             voice.hint = "Microphone unavailable"; voice.state = VoicePanel.State.IDLE
@@ -626,6 +632,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onDestroy() {
         cancelVoice()
         prefs.sp.unregisterOnSharedPreferenceChangeListener(themeListener)
+        suggest.close()
         glideExec.shutdownNow()
         super.onDestroy()
     }

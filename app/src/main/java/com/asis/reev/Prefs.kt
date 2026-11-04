@@ -27,29 +27,31 @@ class Prefs(ctx: Context) {
      * API keys are stored encrypted (see [KeyVault]) under "ekey_<engine>". A plaintext "key_<engine>" left by
      * an older build or by tools/inject_keys.py is encrypted on first read and the plaintext removed.
      */
-    @Synchronized fun apiKey(e: Engine): String {
+    fun apiKey(e: Engine): String = synchronized(KEY_LOCK) {
         val field = "ekey_${e.id}"
         sp.getString(field, null)?.let { blob ->
             val k = KeyVault.decrypt(blob, field)
             if (k == null) sp.edit().remove(field).commit()   // unrecoverable: drop it, the user re-enters the key
-            return k?.trim() ?: ""
+            return@synchronized k?.trim() ?: ""
         }
         val legacy = sp.getString("key_${e.id}", null)?.trim()
-        if (!legacy.isNullOrEmpty()) {
-            // Migrate: commit the encrypted copy first, and only then delete the plaintext.
-            val ok = sp.edit().putString(field, KeyVault.encrypt(legacy, field)).commit()
-            if (ok) sp.edit().remove("key_${e.id}").commit()
-            return legacy
-        }
-        return ""
+        if (legacy.isNullOrEmpty()) return@synchronized ""
+        // Migrate in one transaction: encrypted copy in, plaintext out.
+        val ok = sp.edit().putString(field, KeyVault.encrypt(legacy, field)).remove("key_${e.id}").commit()
+        if (ok) legacy else ""
     }
 
-    @Synchronized fun setApiKey(e: Engine, v: String) {
+    fun setApiKey(e: Engine, v: String): Unit = synchronized(KEY_LOCK) {
         val t = v.trim()
         val field = "ekey_${e.id}"
         val ed = sp.edit().remove("key_${e.id}")
         if (t.isEmpty()) ed.remove(field) else ed.putString(field, KeyVault.encrypt(t, field))
-        ed.apply()
+        ed.commit()
+    }
+
+    companion object {
+        /** Process-wide: the IME and the settings screen each hold their own Prefs instance. */
+        private val KEY_LOCK = Any()
     }
 
     var haptics: Boolean

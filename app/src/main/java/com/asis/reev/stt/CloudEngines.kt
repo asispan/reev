@@ -17,10 +17,9 @@ class ElevenLabsStt(private val key: String) : SttEngine {
         override fun request() = Request.Builder()
             .url("wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&audio_format=pcm_16000&language_code=en&commit_strategy=manual")
             .header("xi-api-key", key).build()
-        override fun sendAudio(ws: WebSocket, pcm: ShortArray) {
+        override fun sendAudio(ws: WebSocket, pcm: ShortArray): Boolean =
             ws.send(JSONObject().put("message_type", "input_audio_chunk").put("audio_base_64", b64(pcm))
                 .put("commit", false).put("sample_rate", 16000).toString())
-        }
         override fun sendFinish(ws: WebSocket) {
             // commit must carry audio; 50 ms of silence
             ws.send(JSONObject().put("message_type", "input_audio_chunk").put("audio_base_64", b64(ShortArray(800)))
@@ -53,7 +52,7 @@ class CartesiaStt(private val key: String) : SttEngine {
         override fun request() = Request.Builder()
             .url("wss://api.cartesia.ai/stt/websocket?model=ink-2&language=en&encoding=pcm_s16le&sample_rate=16000&cartesia_version=2026-08-14")
             .header("X-API-Key", key).header("Cartesia-Version", "2026-08-14").build()
-        override fun sendAudio(ws: WebSocket, pcm: ShortArray) { ws.send(bin(pcm)) }
+        override fun sendAudio(ws: WebSocket, pcm: ShortArray): Boolean = ws.send(bin(pcm))
         override fun sendFinish(ws: WebSocket) { ws.send("finalize"); armGrace(6000) }
         override fun currentFinal() = (finals.toString() + live).trim()
         override fun onText(json: JSONObject, raw: String) {
@@ -82,7 +81,7 @@ class SmallestStt(private val key: String) : SttEngine {
         override fun request() = Request.Builder()
             .url("wss://api.smallest.ai/waves/v1/stt/live?model=pulse&language=en&encoding=linear16&sample_rate=16000")
             .header("Authorization", "Bearer $key").build()
-        override fun sendAudio(ws: WebSocket, pcm: ShortArray) { ws.send(bin(pcm)) }
+        override fun sendAudio(ws: WebSocket, pcm: ShortArray): Boolean = ws.send(bin(pcm))
         override fun sendFinish(ws: WebSocket) {
             ws.send(JSONObject().put("type", "close_stream").toString()); armGrace(6000)
         }
@@ -113,9 +112,8 @@ class SarvamStt(private val key: String) : SttEngine {
             .url("wss://api.sarvam.ai/speech-to-text-realtime/ws?language_code=en-IN&model=saaras:v3-realtime&stream_type=fast&endpointing=manual&encoding=linear16&sample_rate=16000")
             .header("Api-Subscription-Key", key).build()
         override fun onOpenSend(ws: WebSocket) { ws.send("""{"event":"speech_start"}""") }
-        override fun sendAudio(ws: WebSocket, pcm: ShortArray) {
+        override fun sendAudio(ws: WebSocket, pcm: ShortArray): Boolean =
             ws.send(JSONObject().put("event", "audio_input").put("audio", b64(pcm)).toString())
-        }
         override fun sendFinish(ws: WebSocket) {
             ws.send("""{"event":"speech_end"}""")
             ws.send("""{"event":"flush"}""")

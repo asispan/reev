@@ -35,7 +35,7 @@ class Lexicon(
     private val contractionForms = HashSet<String>()
 
     /** Words the user has typed/accepted, with counts. Owned by the Android wrapper. */
-    val learned = HashMap<String, Long>()
+    val learned = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /** When false, Hinglish-only words are ignored for suggestions, autocorrect and prediction. */
     @Volatile var hinglish = true

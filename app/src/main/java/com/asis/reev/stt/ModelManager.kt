@@ -6,6 +6,9 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /** A pinned model file: exact size and SHA-256, checked before the file is ever handed to the native runtime. */
 class ModelFile(val name: String, val size: Long, val sha256: String)
@@ -41,102 +44,132 @@ enum class LocalModel(val id: String, val title: String, val repo: String, val r
 }
 
 object ModelManager {
-    fun dir(ctx: Context, m: LocalModel): File =
-        File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "models/${m.id}")
+    /**
+     * Models live in app-internal storage, which only Reev can write to. (Older builds used the app's external
+     * folder, which other apps could write on Android 8–10; those files are verified and moved on next download.)
+     */
+    fun dir(ctx: Context, m: LocalModel): File = File(ctx.filesDir, "models/${m.id}")
+    private fun legacyDir(ctx: Context, m: LocalModel): File? = ctx.getExternalFilesDir(null)?.let { File(it, "models/${m.id}") }
 
-    /** Installed = every file present at its pinned size with a verified-hash marker beside it. */
+    /**
+     * Installed = every file at its pinned size, with a marker recording the verified SHA-256 for exactly this
+     * file (size + modification time). The full hash is computed when the file is written or migrated.
+     */
     fun isInstalled(ctx: Context, m: LocalModel): Boolean {
         val d = dir(ctx, m)
-        return m.files.all { f -> File(d, f.name).length() == f.size && marker(d, f).let { it.exists() && it.readText() == f.sha256 } }
+        return m.files.all { f -> markerOk(d, f) }
     }
 
-    fun delete(ctx: Context, m: LocalModel) { dir(ctx, m).deleteRecursively() }
+    fun delete(ctx: Context, m: LocalModel) { dir(ctx, m).deleteRecursively(); legacyDir(ctx, m)?.deleteRecursively() }
 
-    @Volatile var downloading: LocalModel? = null
-    @Volatile private var cancelFlag = false
-    fun cancel() { cancelFlag = true }
+    private val active = AtomicReference<LocalModel?>(null)
+    val downloading: LocalModel? get() = active.get()
+    @Volatile private var cancelled = false
+    fun cancel() { cancelled = true }
 
     /** Observers for background downloads (screens add themselves while visible). */
     interface Listener {
         fun onProgress(m: LocalModel, done: Long, total: Long)
         fun onDone(m: LocalModel, error: String?)
     }
-    private val listeners = java.util.concurrent.CopyOnWriteArraySet<Listener>()
+    private val listeners = CopyOnWriteArraySet<Listener>()
     fun addListener(l: Listener) { listeners += l }
     fun removeListener(l: Listener) { listeners -= l }
-    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "reev-model-download") }
+    private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "reev-model-download") }
 
-    /** Starts a download on the app-scoped worker (holds only the application context). No-op if one is running. */
+    /**
+     * Starts a download on the app-scoped worker (holds only the application context). No-op if one is running.
+     * On success the model is selected and warmed here, so it doesn't depend on any screen being open.
+     */
     fun start(ctx: Context, m: LocalModel) {
-        if (downloading != null) return
+        if (!active.compareAndSet(null, m)) return
+        cancelled = false
         val app = ctx.applicationContext
-        downloading = m
         worker.execute {
             val err = try {
-                download(app, m) { d, t -> listeners.forEach { it.onProgress(m, d, t) } }; null
+                download(app, m) { d, t -> listeners.forEach { l -> runCatching { l.onProgress(m, d, t) } } }
+                val p = com.asis.reev.Prefs(app); p.localModel = m.id; p.engine = com.asis.reev.Engine.LOCAL
+                runCatching { Engines.warm(app, com.asis.reev.Engine.LOCAL) }
+                null
             } catch (e: InterruptedException) { "cancelled" } catch (e: Throwable) { e.message ?: e.javaClass.simpleName }
-            listeners.forEach { it.onDone(m, err) }
+            finally { active.set(null) }
+            listeners.forEach { l -> runCatching { l.onDone(m, err) } }
         }
     }
 
     private fun marker(d: File, f: ModelFile) = File(d, "${f.name}.verified")
+    private fun stamp(file: File, f: ModelFile) = "${f.sha256} ${file.length()} ${file.lastModified()}"
+    private fun markerOk(d: File, f: ModelFile): Boolean {
+        val file = File(d, f.name)
+        if (file.length() != f.size) return false
+        return runCatching { marker(d, f).readText() == stamp(file, f) }.getOrDefault(false)
+    }
 
     /**
      * Blocking download with resume, from the pinned revision. Each file is SHA-256 checked before it is
      * moved into place; a mismatch deletes it and fails. progress(bytesDone, bytesTotal). Throws on failure.
      */
-    fun download(ctx: Context, m: LocalModel, progress: (Long, Long) -> Unit) {
-        downloading = m; cancelFlag = false
-        try {
-            val d = dir(ctx, m).apply { mkdirs() }
-            val total = m.files.sumOf { it.size }
-            var doneBefore = 0L
-            for (f in m.files) {
-                val out = File(d, f.name)
-                if (out.length() == f.size && marker(d, f).let { it.exists() && it.readText() == f.sha256 }) {
-                    doneBefore += f.size; progress(doneBefore, total); continue
-                }
-                // A complete file from an older build (no marker yet): verify it instead of downloading again.
-                if (out.length() == f.size && sha256(out) == f.sha256) {
-                    marker(d, f).writeText(f.sha256); doneBefore += f.size; progress(doneBefore, total); continue
-                }
-                out.delete(); marker(d, f).delete()
-                val part = File(d, "${f.name}.part")
-                var have = if (part.exists()) part.length() else 0L
-                if (have > f.size) { part.delete(); have = 0L }
-                if (have < f.size) {
-                    val conn = open(url(m, f.name))
-                    if (have > 0) conn.setRequestProperty("Range", "bytes=$have-")
-                    val code = conn.responseCode
-                    if (code == 200) have = 0L else if (code != 206) throw RuntimeException("HTTP $code for ${f.name}")
-                    conn.inputStream.use { inp ->
-                        FileOutputStream(part, have > 0).use { o ->
-                            val buf = ByteArray(1 shl 16)
-                            var last = 0L
-                            while (true) {
-                                if (cancelFlag) throw InterruptedException("Cancelled")
-                                val n = inp.read(buf); if (n < 0) break
-                                o.write(buf, 0, n); have += n
-                                if (have > f.size) throw RuntimeException("${f.name} is larger than expected")
-                                val now = System.currentTimeMillis()
-                                if (now - last > 250) { progress(doneBefore + have, total); last = now }
-                            }
+    private fun download(ctx: Context, m: LocalModel, progress: (Long, Long) -> Unit) {
+        val d = dir(ctx, m).apply { mkdirs() }
+        val legacy = legacyDir(ctx, m)
+        val total = m.files.sumOf { it.size }
+        var doneBefore = 0L
+        for (f in m.files) {
+            val out = File(d, f.name)
+            if (markerOk(d, f)) { doneBefore += f.size; progress(doneBefore, total); continue }
+            marker(d, f).delete()
+            val part = File(d, "${f.name}.part")
+            // Reuse a complete copy from an older build (internal or legacy external folder) only if it verifies.
+            val reuse = listOfNotNull(out, legacy?.let { File(it, f.name) }).firstOrNull { it.length() == f.size && sha256(it) == f.sha256 }
+            if (reuse != null) {
+                if (reuse !== out) { reuse.copyTo(part, overwrite = true); if (sha256(part) != f.sha256 || !part.renameTo(out)) throw RuntimeException("Couldn't move ${f.name}") }
+                marker(d, f).writeText(stamp(out, f))
+                doneBefore += f.size; progress(doneBefore, total); continue
+            }
+            out.delete()
+            var have = if (part.exists()) part.length() else 0L
+            if (have > f.size) { part.delete(); have = 0L }
+            if (have < f.size) {
+                val conn = open(url(m, f.name))
+                if (have > 0) conn.setRequestProperty("Range", "bytes=$have-")
+                val code = conn.responseCode
+                if (code == 200) have = 0L else if (code != 206) throw RuntimeException("HTTP $code for ${f.name}")
+                conn.inputStream.use { inp ->
+                    FileOutputStream(part, have > 0).use { o ->
+                        val buf = ByteArray(1 shl 16)
+                        var last = 0L
+                        while (true) {
+                            if (cancelled) throw InterruptedException("Cancelled")
+                            val n = inp.read(buf); if (n < 0) break
+                            o.write(buf, 0, n); have += n
+                            if (have > f.size) throw RuntimeException("${f.name} is larger than expected")
+                            val now = System.currentTimeMillis()
+                            if (now - last > 250) { progress(doneBefore + have, total); last = now }
                         }
                     }
                 }
-                if (part.length() != f.size) throw RuntimeException("Incomplete download of ${f.name}")
-                if (sha256(part) != f.sha256) { part.delete(); throw RuntimeException("${f.name} failed its integrity check") }
-                if (!part.renameTo(out)) throw RuntimeException("Couldn't save ${f.name}")
-                marker(d, f).writeText(f.sha256)
-                doneBefore += f.size
-                progress(doneBefore, total)
             }
-        } finally { downloading = null }
+            if (part.length() != f.size) throw RuntimeException("Incomplete download of ${f.name}")
+            if (sha256(part) != f.sha256) { part.delete(); throw RuntimeException("${f.name} failed its integrity check") }
+            if (cancelled) throw InterruptedException("Cancelled")
+            out.delete()
+            if (!part.renameTo(out)) throw RuntimeException("Couldn't save ${f.name}")
+            marker(d, f).writeText(stamp(out, f))
+            doneBefore += f.size
+            progress(doneBefore, total)
+        }
+        legacy?.deleteRecursively()
     }
 
     private fun sha256(f: File): String {
         val md = MessageDigest.getInstance("SHA-256")
-        f.inputStream().use { inp -> val buf = ByteArray(1 shl 16); while (true) { val n = inp.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+        f.inputStream().use { inp ->
+            val buf = ByteArray(1 shl 16)
+            while (true) {
+                if (cancelled) throw InterruptedException("Cancelled")
+                val n = inp.read(buf); if (n < 0) break; md.update(buf, 0, n)
+            }
+        }
         return md.digest().joinToString("") { "%02x".format(it) }
     }
 

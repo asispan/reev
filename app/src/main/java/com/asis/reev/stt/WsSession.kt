@@ -40,6 +40,7 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
     private var open = false
     private val pending = ArrayList<ShortArray>()
     private var pendingSamples = 0
+    @Volatile private var sendFailed = false
     @Volatile protected var finished = false
     @Volatile protected var closed = false
     private val acc by lazy { ShortArray(frameSamples) }
@@ -50,7 +51,8 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
 
     protected abstract fun request(): Request
     protected open fun onOpenSend(ws: WebSocket) {}
-    protected abstract fun sendAudio(ws: WebSocket, pcm: ShortArray)
+    /** Returns false if OkHttp refused the frame (socket closing, or its 16 MB outgoing queue is full). */
+    protected abstract fun sendAudio(ws: WebSocket, pcm: ShortArray): Boolean
     protected abstract fun sendFinish(ws: WebSocket)
     protected abstract fun onText(json: JSONObject, raw: String)
 
@@ -58,12 +60,18 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
         Net.client.newWebSocket(request(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 synchronized(lock) {
+                    if (closed) {   // cancelled or failed while connecting: never replay buffered audio
+                        pending.clear(); pendingSamples = 0; accN = 0
+                        webSocket.cancel(); return
+                    }
                     ws = webSocket; open = true
                     onOpenSend(webSocket)
-                    pending.forEach { sendAudio(webSocket, it) }
+                    val replayed = pending.all { sendAudio(webSocket, it) }
                     pending.clear(); pendingSamples = 0
+                    if (!replayed) { sendFailed = true }
                     if (finished) { flushAcc(webSocket); sendFinish(webSocket) }
                 }
+                if (sendFailed) fail("$tag: connection closed")
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 if (closed) return
@@ -99,7 +107,7 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
     protected open fun currentFinal(): String = ""
 
     private fun flushAcc(ws: WebSocket) {
-        if (accN > 0) { sendAudio(ws, acc.copyOf(accN)); accN = 0 }
+        if (accN > 0) { if (!sendAudio(ws, acc.copyOf(accN))) sendFailed = true; accN = 0 }
     }
 
     override fun feed(pcm: ShortArray) {
@@ -113,12 +121,13 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
                 if (accN < frameSamples) break
                 val frame = acc.copyOf(); accN = 0
                 val w = ws
-                if (open && w != null) sendAudio(w, frame)
+                if (open && w != null) { if (!sendAudio(w, frame)) sendFailed = true }
                 else if (pendingSamples + frame.size <= MAX_PENDING) { pending += frame; pendingSamples += frame.size }
                 else overflow = true
             }
         }
         if (overflow) fail("$tag: couldn't connect")
+        else if (sendFailed) fail("$tag: connection closed")
     }
 
     override fun finish() {
@@ -128,10 +137,12 @@ abstract class WsSession(private val cb: SttCallback, private val tag: String) :
             val w = ws
             if (open && w != null) { flushAcc(w); sendFinish(w) }
         }
+        if (sendFailed) fail("$tag: connection closed")
     }
 
     override fun cancel() {
         closed = true
+        synchronized(lock) { pending.clear(); pendingSamples = 0; accN = 0 }
         ws?.cancel()
     }
 

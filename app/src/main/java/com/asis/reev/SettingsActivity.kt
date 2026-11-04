@@ -38,10 +38,12 @@ class SettingsActivity : Activity() {
 
     private class ModelViews(val bar: ProgressBar, val status: TextView, val btn: Button)
     private val modelViews = HashMap<LocalModel, ModelViews>()
+    private var visible = false
 
     /** Downloads run in ModelManager (app scope); this screen only observes, so rotation or leaving can't leak it. */
     private val downloadListener = object : ModelManager.Listener {
         override fun onProgress(m: LocalModel, done: Long, total: Long) = main.post {
+            if (!visible) return@post
             modelViews[m]?.let { v ->
                 v.bar.visibility = View.VISIBLE; v.btn.text = "Cancel"
                 v.bar.progress = (done * 1000 / total).toInt()
@@ -49,7 +51,8 @@ class SettingsActivity : Activity() {
             }
         }.let {}
         override fun onDone(m: LocalModel, error: String?) = main.post {
-            if (error == null) { prefs.localModel = m.id; prefs.engine = Engine.LOCAL; Engines.warm(this@SettingsActivity, Engine.LOCAL); render() }
+            if (!visible) return@post
+            if (error == null) render()   // ModelManager already selected and warmed the model
             else modelViews[m]?.let { v -> v.status.text = "Download failed: $error"; v.btn.text = "Retry"; v.bar.visibility = View.GONE }
         }.let {}
     }
@@ -66,8 +69,8 @@ class SettingsActivity : Activity() {
         prefs = Prefs(this)
     }
 
-    override fun onResume() { super.onResume(); ModelManager.addListener(downloadListener); render() }
-    override fun onPause() { ModelManager.removeListener(downloadListener); super.onPause() }
+    override fun onResume() { super.onResume(); visible = true; ModelManager.addListener(downloadListener); render() }
+    override fun onPause() { visible = false; ModelManager.removeListener(downloadListener); super.onPause() }
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) refreshSetup() }
 
     private var setupBox: LinearLayout? = null

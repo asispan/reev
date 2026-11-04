@@ -18,7 +18,7 @@ object KeyVault {
     private const val ALIAS = "reev-api-keys"
     private const val GCM_TAG_BITS = 128
 
-    private fun key(): SecretKey {
+    @Synchronized private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")

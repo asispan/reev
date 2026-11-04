@@ -43,7 +43,17 @@ jobs:
 
       - name: Release build refuses to sign without the upload key
         run: |
-          if ./gradlew --no-daemon assembleRelease; then
-            echo "assembleRelease succeeded without signing env vars: it must fail closed" >&2
-            exit 1
-          fi
+          set +e
+          out=$(./gradlew --no-daemon assembleRelease 2>&1)
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -F "Release signing credentials are required" <<<"$out"
+
+      - name: Signed, minified release builds (throwaway keystore)
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -storepass ci-pass-123 -keypass ci-pass-123 \
+            -alias reev-upload -keyalg RSA -keysize 2048 -validity 1 -dname CN=ci
+          REEV_KEYSTORE="$RUNNER_TEMP/ci.jks" REEV_KEYSTORE_PASSWORD=ci-pass-123 ./gradlew --no-daemon assembleRelease
+          # Release must carry no transcript/debug logging strings.
+          unzip -p app/build/outputs/apk/release/app-release.apk 'classes*.dex' | strings | { ! grep -E "decoded .* pts|<- .* chars"; }

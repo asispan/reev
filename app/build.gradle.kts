@@ -21,12 +21,15 @@ android {
     val ksPath = System.getenv("REEV_KEYSTORE")
     val ksPass = System.getenv("REEV_KEYSTORE_PASSWORD")
     val keyPass = System.getenv("REEV_KEY_PASSWORD") ?: ksPass
-    val wantsRelease = gradle.startParameter.taskNames.any { Regex("(assemble|bundle|package|install|publish)\\w*Release").containsMatchIn(it) }
-    if (wantsRelease && (ksPath == null || ksPass == null)) {
-        throw GradleException("Release builds need REEV_KEYSTORE and REEV_KEYSTORE_PASSWORD (REEV_KEY_PASSWORD if different). Refusing to sign with the debug key.")
+    // Decided on the resolved task graph, so aggregate or abbreviated tasks (build, assemble, aR) can't slip past.
+    gradle.taskGraph.whenReady {
+        val packagesRelease = allTasks.any { Regex(""".*:(assemble|bundle|package|install|publish|sign)\w*Release.*""").matches(it.path) }
+        if (packagesRelease && (ksPath.isNullOrBlank() || ksPass.isNullOrBlank() || keyPass.isNullOrBlank())) {
+            throw GradleException("Release signing credentials are required: set REEV_KEYSTORE and REEV_KEYSTORE_PASSWORD (and REEV_KEY_PASSWORD if it differs). Refusing to fall back to the debug key.")
+        }
     }
     signingConfigs {
-        if (ksPath != null && ksPass != null) create("upload") {
+        if (!ksPath.isNullOrBlank() && !ksPass.isNullOrBlank()) create("upload") {
             storeFile = file(ksPath); storePassword = ksPass
             keyAlias = System.getenv("REEV_KEY_ALIAS") ?: "reev-upload"; keyPassword = keyPass
         }

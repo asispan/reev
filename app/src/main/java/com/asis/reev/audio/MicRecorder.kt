@@ -9,64 +9,75 @@ import android.os.Process
 import kotlin.math.log10
 import kotlin.math.sqrt
 
-/** 16 kHz mono PCM16 capture on a dedicated high-priority thread. Chunks are ~40 ms. */
+/**
+ * 16 kHz mono PCM16 capture on a dedicated high-priority thread. Chunks are ~40 ms.
+ *
+ * Ownership is simple: once started, the reader thread owns the AudioRecord and always releases it in its
+ * `finally`, whether it stopped because of [stop] or because the device reported a read error (then
+ * [onError] fires). [start] and [stop] are serialised, so a stop can never miss a recorder that is starting.
+ */
 class MicRecorder(
     private val onChunk: (ShortArray) -> Unit,
     private val onLevel: (Float) -> Unit,
+    private val onError: () -> Unit = {},
 ) {
     companion object { const val RATE = 16000; const val CHUNK = 640 } // 40 ms
 
+    private val lock = Any()
     @Volatile private var running = false
     private var thread: Thread? = null
     private var rec: AudioRecord? = null
-    private var ns: NoiseSuppressor? = null
 
     @SuppressLint("MissingPermission")
-    fun start(): Boolean {
-        if (running) return true
+    fun start(): Boolean = synchronized(lock) {
+        if (thread != null) return true
         val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
             AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(min, CHUNK * 2 * 8))
         } catch (e: Exception) { return false }
-        if (r.state != AudioRecord.STATE_INITIALIZED) { r.release(); return false }
-        if (NoiseSuppressor.isAvailable()) ns = runCatching { NoiseSuppressor.create(r.audioSessionId)?.also { it.enabled = true } }.getOrNull()
-        try { r.startRecording() } catch (e: Exception) { release(r); return false }
-        if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) { release(r); return false }
+        if (r.state != AudioRecord.STATE_INITIALIZED) { runCatching { r.release() }; return false }
+        val ns = if (NoiseSuppressor.isAvailable()) runCatching { NoiseSuppressor.create(r.audioSessionId)?.also { it.enabled = true } }.getOrNull() else null
+        val started = try { r.startRecording(); r.recordingState == AudioRecord.RECORDSTATE_RECORDING } catch (e: Exception) { false }
+        if (!started) { ns?.let { runCatching { it.release() } }; runCatching { r.release() }; return false }
         rec = r
         running = true
         thread = Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-            val buf = ShortArray(CHUNK)
-            while (running) {
-                val n = r.read(buf, 0, buf.size)
-                if (n < 0) break          // ERROR_* (device gone, invalid state): stop rather than spin
-                if (n == 0) continue
-                val chunk = buf.copyOf(n)
-                var sum = 0.0
-                for (s in chunk) sum += s * s.toDouble()
-                val rms = sqrt(sum / n)
-                val db = 20 * log10(rms.coerceAtLeast(1.0) / 32768.0) // -90..0
-                onLevel(((db + 55) / 45).toFloat().coerceIn(0f, 1f))
-                onChunk(chunk)
+            var failed = false
+            try {
+                val buf = ShortArray(CHUNK)
+                while (running) {
+                    val n = r.read(buf, 0, buf.size)
+                    if (n < 0) { failed = running; break }   // ERROR_*: device gone or invalid state
+                    if (n == 0) continue
+                    val chunk = buf.copyOf(n)
+                    var sum = 0.0
+                    for (s in chunk) sum += s * s.toDouble()
+                    val rms = sqrt(sum / n)
+                    val db = 20 * log10(rms.coerceAtLeast(1.0) / 32768.0) // -90..0
+                    onLevel(((db + 55) / 45).toFloat().coerceIn(0f, 1f))
+                    onChunk(chunk)
+                }
+            } finally {
+                running = false
+                runCatching { r.stop() }
+                ns?.let { runCatching { it.release() } }
+                runCatching { r.release() }
+                synchronized(lock) { if (rec === r) rec = null; if (thread === Thread.currentThread()) thread = null }
             }
+            if (failed) onError()
         }, "reev-mic").also { it.start() }
-        return true
+        true
     }
 
     fun stop() {
-        running = false
-        val r = rec
-        // stop() first: it unblocks a read() in progress, so the join below is deterministic.
-        r?.let { runCatching { it.stop() } }
-        thread?.join(1000)
-        thread = null
-        r?.let { release(it) }
-        rec = null
-    }
-
-    private fun release(r: AudioRecord) {
-        ns?.let { runCatching { it.release() } }; ns = null
-        runCatching { r.release() }
+        val t = synchronized(lock) {
+            running = false
+            // stop() unblocks a read() in progress; the reader thread then releases the recorder itself.
+            rec?.let { runCatching { it.stop() } }
+            thread
+        } ?: return
+        if (t !== Thread.currentThread()) t.join(2000)
     }
 }

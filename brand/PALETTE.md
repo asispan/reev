@@ -23,7 +23,7 @@ This is Reev's brand palette, approved by Asis on 4 Nov 2026. Use it for everyth
 
 ## Signature gradient ("large card")
 
-Used for the logo and the hero download card.
+Used for the download card and other large accent surfaces.
 
 ```
 #9DF0E4 → #2FB3A8 → #2B5E8C → #8E2E7C → #E2336B  (logo ends #FF7FA3)
@@ -38,5 +38,5 @@ CSS: radial-gradient(90% 120% at 15% 0%, #9DF0E4 0%, #2FB3A8 30%, #2B5E8C 58%, #
 
 ## Type (web)
 
-- Logo: Tanker, drawn as an inflated matte "bubble" with the signature gradient.
+- Logo: Tanker, plain ink (`#121826`). No effects.
 - Everything else: Ranade Light (300) and Excon Medium (500), from Fontshare.

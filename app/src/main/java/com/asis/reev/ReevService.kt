@@ -581,11 +581,21 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         var t = text
         val sentenceStart = before.isEmpty() || before.trimEnd().let { it.isEmpty() || it.last() in ".!?\n" }
         if (sentenceStart) t = t.replaceFirstChar { it.uppercase() }
-        else if (t.length > 1 && t[0].isUpperCase() && t[1].isLowerCase() && !t.startsWith("I ")) {
-            // keep provider casing for proper nouns; just leave as-is
+        else if (t.length > 1 && t[0].isUpperCase() && t[1].isLowerCase()) {
+            // Mid-sentence: engines capitalise every utterance ("Hey Running late"). Lower-case the
+            // first word when it's an ordinary dictionary word; keep "I", "I'm" and likely names.
+            val first = t.takeWhile { it.isLetter() || it == '\'' }
+            val low = first.lowercase()
+            if (!low.startsWith("i'") && low != "i" && suggest.isKnown(low)) t = low + t.substring(first.length)
         }
         if (before.isNotEmpty() && !before.last().isWhitespace()) t = " $t"
+        val endsSentence = t.trimEnd().lastOrNull()?.let { it in ".!?" } == true
+        if (endsSentence && !t.endsWith(" ")) t += " "
         ic.commitText(t, 1)
+        // After "…you're having." the next letter should be a capital. Set it directly: the editor's
+        // caps mode can lag a frame behind our own commit.
+        if (endsSentence && prefs.autoCap && this::keyboard.isInitialized && keyboard.shift != ShiftState.LOCKED) keyboard.shift = ShiftState.ON
+        else updateShift()
     }
 
     override fun onEngineTap() {

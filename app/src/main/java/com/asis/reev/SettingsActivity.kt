@@ -210,7 +210,7 @@ class SettingsActivity : Activity() {
                 LocalParakeet.release(); ModelManager.delete(this, m); render(); return@setOnClickListener
             }
             if (ModelManager.downloading != null) { ModelManager.cancel(); return@setOnClickListener }
-            bar.visibility = View.VISIBLE; btn.text = "Cancel"
+            bar.visibility = View.VISIBLE; btn.text = "Cancel"; status.text = "Starting…"
             ModelManager.start(this, m)
         }
         modelViews[m] = ModelViews(bar, status, btn)

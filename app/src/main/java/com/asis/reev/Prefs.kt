@@ -21,7 +21,21 @@ class Prefs(ctx: Context) {
 
     var engine: Engine
         get() = Engine.from(sp.getString("engine", Engine.LOCAL.id))
-        set(v) = sp.edit().putString("engine", v.id).apply()
+        set(v) {
+            val ed = sp.edit().putString("engine", v.id)
+            if (v != Engine.LOCAL) ed.putString("cloud_engine", v.id)
+            ed.apply()
+        }
+
+    /**
+     * The cloud provider used when dictation is switched to "API keys": the last one picked, else the first
+     * with a key saved, else Sarvam. Switching between on-device and cloud only changes [engine]; the
+     * downloaded model and the saved keys are left alone.
+     */
+    val cloudEngine: Engine
+        get() = Engine.from(sp.getString("cloud_engine", null)).takeIf { it != Engine.LOCAL }
+            ?: Engine.entries.firstOrNull { it != Engine.LOCAL && apiKey(it).isNotEmpty() }
+            ?: Engine.SARVAM
 
     /**
      * API keys are stored encrypted (see [KeyVault]) under "ekey_<engine>". A plaintext "key_<engine>" left by

@@ -102,18 +102,45 @@ class SettingsActivity : Activity() {
 
         // ---- engine
         val eng = section("Dictation engine")
+        // Manual switch: on-device model or cloud API keys. It only changes which engine dictation uses;
+        // the downloaded model and the saved keys both stay on the phone.
+        val segLocal = segment("On-device model")
+        val segCloud = segment("API keys (cloud)")
+        val seg = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; background = rounded(Color.parseColor("#26282E"), 12)
+            setPadding(dpi(3), dpi(3), dpi(3), dpi(3))
+            addView(segLocal, LinearLayout.LayoutParams(0, dpi(40), 1f)); addView(segCloud, LinearLayout.LayoutParams(0, dpi(40), 1f))
+        }
+        val providers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dpi(10), 0, 0) }
+        providers.addView(text("Provider", 13.5f, fg, bold = true))
         val rg = RadioGroup(this)
-        Engine.entries.forEach { e ->
+        val cloud = prefs.cloudEngine
+        Engine.entries.filter { it != Engine.LOCAL }.forEach { e ->
             val rb = RadioButton(this).apply {
                 text = e.title; setTextColor(fg); textSize = 15f; id = View.generateViewId(); tag = e
                 buttonTintList = android.content.res.ColorStateList.valueOf(accent)
             }
             rg.addView(rb)
-            if (prefs.engine == e) rb.isChecked = true
+            if (cloud == e) rb.isChecked = true
         }
         rg.setOnCheckedChangeListener { g, id -> (g.findViewById<View>(id).tag as Engine).let { prefs.engine = it; Engines.warm(this, it) } }
-        eng.addView(rg)
-        eng.addView(text("Tip: tap the engine chip in the voice panel to switch on the fly.", 12.5f, sub))
+        providers.addView(rg)
+        val modeNote = text("", 12.5f, sub).also { it.setPadding(0, dpi(10), 0, 0) }
+        fun showMode() {
+            val local = prefs.engine == Engine.LOCAL
+            segLocal.background = if (local) rounded(accent, 10) else null
+            segCloud.background = if (local) null else rounded(accent, 10)
+            segLocal.setTextColor(if (local) Color.WHITE else sub); segCloud.setTextColor(if (local) sub else Color.WHITE)
+            providers.visibility = if (local) View.GONE else View.VISIBLE
+            segLocal.isSelected = local; segCloud.isSelected = !local   // announced by screen readers
+            modeNote.text = if (local) "Dictation runs offline on this phone. Your API keys stay saved."
+                else "Audio is streamed to the provider above. The downloaded model stays on the phone; switch back any time."
+        }
+        segLocal.setOnClickListener { prefs.engine = Engine.LOCAL; Engines.warm(this, Engine.LOCAL); showMode() }
+        segCloud.setOnClickListener { prefs.cloudEngine.let { prefs.engine = it; Engines.warm(this, it) }; showMode() }
+        showMode()
+        eng.addView(seg); eng.addView(providers); eng.addView(modeNote)
+        eng.addView(text("Tip: tap the engine chip in the voice panel to switch on the fly.", 12.5f, sub).also { it.setPadding(0, dpi(4), 0, 0) })
 
         // ---- local model
         val loc = section("On-device model (NVIDIA Parakeet)")
@@ -258,6 +285,10 @@ class SettingsActivity : Activity() {
 
     private fun text(s: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = s; textSize = size; setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD
+    }
+
+    private fun segment(s: String) = TextView(this).apply {
+        text = s; textSize = 14.5f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; isClickable = true
     }
 
     private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(10) }

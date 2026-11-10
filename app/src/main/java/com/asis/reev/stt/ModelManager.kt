@@ -88,8 +88,9 @@ object ModelManager {
         worker.execute {
             val err = try {
                 download(app, m) { d, t -> listeners.forEach { l -> runCatching { l.onProgress(m, d, t) } } }
-                val p = com.asis.reev.Prefs(app); p.localModel = m.id; p.engine = com.asis.reev.Engine.LOCAL
-                runCatching { Engines.warm(app, com.asis.reev.Engine.LOCAL) }
+                // Pick the new model, but leave the on-device/cloud switch where the user set it.
+                val p = com.asis.reev.Prefs(app); p.localModel = m.id
+                if (p.engine == com.asis.reev.Engine.LOCAL) runCatching { Engines.warm(app, com.asis.reev.Engine.LOCAL) }
                 null
             } catch (e: InterruptedException) { "cancelled" } catch (e: Throwable) { e.message ?: e.javaClass.simpleName }
             finally { active.set(null) }

@@ -184,6 +184,12 @@ In the app's private storage on your phone, encrypted with an AES-256-GCM key th
 </details>
 
 <details>
+<summary><b>Does it work with TalkBack?</b></summary>
+<br>
+From 0.1.2, yes. Slide a finger over the keyboard to hear each key and lift to type it (TalkBack's default typing method), or double-tap if you've chosen that in TalkBack. The mic is the last item in the bar above the keys, named "Voice typing". Because holding a button doesn't work under a screen reader, "Start dictation" is a toggle there: activate it once to start, and "Stop and insert" to finish. Reev stays silent while the mic is open so the screen reader's voice isn't transcribed.
+</details>
+
+<details>
 <summary><b>Which phones does it support?</b></summary>
 <br>
 Android 8.0+ phones on arm64 or armv7. On-device dictation works best on recent flagship chips; older phones may prefer a cloud engine.
@@ -196,6 +202,7 @@ Android 8.0+ phones on arm64 or armv7. On-device dictation works best on recent 
 - Cloud engines use your own long-lived provider key on the device. There's no token broker, by design (no Reev server).
 - The benchmark is from a single phone; there's no automated on-device performance suite yet.
 - Emoji come without skin-tone variants for now.
+- Screen-reader support is new in 0.1.2. Every key, the mic and the emoji panel are named and can be activated, and it passes an on-device check that drives the keyboard through the accessibility API (`A11yProbe`). It has not yet been through a hands-on TalkBack session by a blind user. With a screen reader on, glide typing and the space-bar cursor drag aren't available, and long-press alternatives are offered as actions on the key.
 
 ## Credits
 

@@ -124,6 +124,21 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
 
     private inner class TabStrip : View(context) {
         var sel = 1
+            set(v) { if (field != v) a11y.invalidateRoot(); field = v }
+        // Screen readers: one node per category tab.
+        private val a11y = VirtualNodes(this, {
+            val w = width / tabIcons.size.toFloat()
+            tabIcons.indices.map { i ->
+                val name = if (i == 0) "Recent" else groups.getOrNull(i - 1)?.first ?: "Category ${i + 1}"
+                A11yItem(i, "$name emoji", RectF(w * i, 0f, w * (i + 1), height.toFloat()), selected = i == sel)
+            }
+        }, { select(it.id) })
+        override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
+        private fun select(i: Int) {
+            buzz()
+            sel = i; invalidate()
+            (grid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(sectionStart[i], 0)
+        }
         private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = context.dp(19f); textAlign = Paint.Align.CENTER }
         private val ind = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.accent }
         override fun onDraw(c: Canvas) {
@@ -140,10 +155,7 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(e: MotionEvent): Boolean {
             if (e.action == MotionEvent.ACTION_UP) {
-                val i = (e.x / (width / tabIcons.size.toFloat())).toInt().coerceIn(0, tabIcons.size - 1)
-                buzz()
-                sel = i; invalidate()
-                (grid.layoutManager as GridLayoutManager).scrollToPositionWithOffset(sectionStart[i], 0)
+                select((e.x / (width / tabIcons.size.toFloat())).toInt().coerceIn(0, tabIcons.size - 1))
             }
             return true
         }
@@ -156,6 +168,14 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
         private var pressed = -1
         private val h = Handler(Looper.getMainLooper())
         private val rep = object : Runnable { override fun run() { if (pressed == 2) { listener?.onDelete(); h.postDelayed(this, 50) } } }
+        // Screen readers: the three keys of this row.
+        private val a11y = VirtualNodes(this, {
+            rects().mapIndexed { i, rc -> A11yItem(i, when (i) { 0 -> "Letters"; 1 -> "Space"; else -> "Delete" }, rc) }
+        }, {
+            buzz()
+            when (it.id) { 0 -> listener?.onAbc(); 1 -> listener?.onSpace(); 2 -> listener?.onDelete() }
+        })
+        override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
         private fun rects(): List<RectF> {
             val g = context.dp(4f); val t = g; val b = height - g
             val u = width / 10f

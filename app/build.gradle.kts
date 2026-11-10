@@ -11,9 +11,11 @@ android {
         applicationId = "com.asis.reev"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.2"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        // Dependency-free on-device accessibility check; see app/src/androidTest.
+        testInstrumentationRunner = "com.asis.reev.A11yProbe"
     }
 
     // Upload key comes from env vars (never committed). Release builds fail closed without them:
@@ -58,6 +60,7 @@ dependencies {
     // Pinned and checksum-verified by tools/fetch_deps.sh.
     implementation(files("libs/sherpa-onnx-2.0.1.aar"))
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.customview:customview:1.0.0") // ExploreByTouchHelper (screen-reader nodes)
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")

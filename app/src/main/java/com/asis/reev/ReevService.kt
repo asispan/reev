@@ -195,22 +195,29 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         updateSuggestions()
     }
 
+    /** Spoken by a screen reader if one is running; silent otherwise. */
+    private fun say(msg: String) { root?.announceForAccessibility(msg) }
+
     private fun showEmoji() {
         val e = emoji ?: EmojiView(this, Palette.of(this)) { prefs.recentEmoji.split(' ').filter { it.isNotEmpty() } }
             .also { it.listener = this; it.hapticsOn = prefs.haptics; emoji = it }
         e.rebuild()
         content.removeAllViews(); content.addView(e)
         topBar.voiceMode = false
+        say("Emoji")
     }
 
     private fun showVoice() {
         content.removeAllViews(); content.addView(voice)
         topBar.voiceMode = true
-        topBar.transcript = ""; topBar.status = "Hold the mic and speak"
+        // Holding a button isn't possible with a screen reader exploring by touch: there the talk button toggles.
+        val explore = getSystemService(android.view.accessibility.AccessibilityManager::class.java)?.isTouchExplorationEnabled == true
+        topBar.transcript = ""; topBar.status = if (explore) "Activate Start dictation, then speak" else "Hold the mic and speak"
         voice.state = VoicePanel.State.IDLE
         voice.engineLabel = prefs.engine.short
         val reason = Engines.create(this, prefs.engine).notReadyReason()
         voice.hint = reason
+        if (reason == null && !prefs.autoStartVoice) say("Voice typing")
         Engines.warm(this, prefs.engine)
         if (reason == null && prefs.autoStartVoice) { onTalkStart(); voice.state = VoicePanel.State.LATCHED }
     }
@@ -498,7 +505,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         autoSpaced = true; lastCorrection = null
     }
 
-    override fun onBackToKeys() { cancelVoice(); showKeys() }
+    override fun onBackToKeys() { cancelVoice(); showKeys(); say("Keyboard") }
 
     // ---------------- EmojiView.Listener ----------------
     override fun onEmoji(e: String) {
@@ -508,7 +515,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         autoSpaced = false; lastCorrection = null
     }
 
-    override fun onAbc() = showKeys()
+    override fun onAbc() { showKeys(); say("Keyboard") }
     override fun onSpace() { commit(" ") }
 
     // ---------------- VoicePanel.Listener ----------------
@@ -561,6 +568,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onTalkCancel() {
         cancelVoice()
         topBar.transcript = ""; topBar.status = "Cancelled"
+        say("Cancelled")
     }
 
     private fun stopMic() { recorder?.stop(); recorder = null }
@@ -582,6 +590,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (text.isEmpty()) {
             topBar.transcript = ""
             topBar.status = if (peakLevel < 0.08f) "Mic seems silent — is another app using it?" else "Didn't catch that"
+            say(topBar.status)
             return
         }
         topBar.transcript = text
@@ -624,6 +633,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         } else {
             prefs.engine = next
             voice.engineLabel = next.short
+            say("Speech engine, ${next.short}")
             voice.hint = null
             Engines.warm(this, next)
         }

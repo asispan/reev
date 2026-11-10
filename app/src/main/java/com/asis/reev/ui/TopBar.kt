@@ -32,19 +32,52 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
     var hapticsOn = true
 
     var voiceMode = false
-        set(v) { field = v; invalidate() }
+        set(v) { field = v; invalidate(); a11y.invalidateRoot() }
     var suggestions: List<String> = emptyList()
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) a11y.invalidateRoot(); field = v; invalidate() }
     /** Index of the suggestion that equals what was typed verbatim (rendered bold / center). */
     var transcript: String = ""
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) a11y.invalidateRoot(); field = v; invalidate() }
     var status: String = ""
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) a11y.invalidateRoot(); field = v; invalidate() }
     var transcriptPending = false
         set(v) { field = v; invalidate() }
     /** False in password / PIN / incognito fields: the mic is hidden and taps on it are ignored. */
     var micEnabled = true
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) a11y.invalidateRoot(); field = v; invalidate() }
+
+    // --- screen readers: one node per control, activated by double-tap ---
+    // The transcript is readable on demand but is not a live region: speech from the screen reader
+    // while the mic is open would be transcribed.
+    private val a11y = VirtualNodes(this, ::a11yItems, { activate(it.id) })
+
+    private fun a11yItems(): List<A11yItem> {
+        val w = width.toFloat(); val hh = height.toFloat()
+        if (voiceMode) return listOfNotNull(
+            transcript.ifEmpty { status }.takeIf { it.isNotEmpty() }?.let { A11yItem(Z_TEXT, it, RectF(0f, 0f, w - iconW, hh), clickable = false) },
+            A11yItem(Z_BACK, "Back to keyboard", RectF(w - iconW, 0f, w, hh)),
+        )
+        val out = ArrayList<A11yItem>(5)
+        out += A11yItem(Z_SETTINGS, "Reev settings", RectF(0f, 0f, iconW, hh))
+        val cell = (w - 2 * iconW) / 3
+        arrangeSuggestions().forEachIndexed { i, s ->
+            if (s != null) out += A11yItem(i, "Suggestion, $s", RectF(iconW + i * cell, 0f, iconW + (i + 1) * cell, hh))
+        }
+        if (micEnabled) out += A11yItem(Z_MIC, "Voice typing", RectF(w - iconW, 0f, w, hh))
+        return out
+    }
+
+    private fun activate(zone: Int) {
+        if (hapticsOn) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        when (zone) {
+            Z_SETTINGS -> listener?.onSettings()
+            Z_MIC -> listener?.onMic()
+            Z_BACK -> listener?.onBackToKeys()
+            in 0..2 -> arrangeSuggestions().getOrNull(zone)?.let { listener?.onSuggestion(it) }
+        }
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
 
     private val h = ctx.dp(48f)
     private val iconW = ctx.dp(48f)
@@ -59,6 +92,14 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
     private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.keyPressed }
     private var pressedZone = -10
 
+    /** Touch zones (also the screen-reader node ids). 0..2 are the suggestion cells. */
+    private companion object {
+        const val Z_SETTINGS = 4
+        const val Z_MIC = 3
+        const val Z_BACK = 9
+        const val Z_TEXT = 10
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), h.toInt())
     }
@@ -68,7 +109,7 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
         val cy = height / 2f
         if (voiceMode) { drawVoice(c); return }
         // settings icon
-        if (pressedZone == -1) c.drawCircle(iconW / 2, cy, h * 0.4f, pressPaint)
+        if (pressedZone == Z_SETTINGS) c.drawCircle(iconW / 2, cy, h * 0.4f, pressPaint)
         Icons.gear(c, iconW / 2, cy, h * 0.5f, stroke)
         // mic (accent pill)
         val mx = width - iconW / 2
@@ -105,7 +146,7 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
         val pad = context.dp(14f)
         val right = width - iconW
         // back-to-keyboard
-        if (pressedZone == 9) c.drawCircle(width - iconW / 2, height / 2f, h * 0.4f, pressPaint)
+        if (pressedZone == Z_BACK) c.drawCircle(width - iconW / 2, height / 2f, h * 0.4f, pressPaint)
         Icons.keyboard(c, width - iconW / 2, height / 2f, h * 0.55f, stroke)
         val avail = (right - pad * 1.5f).toInt().coerceAtLeast(10)
         val text = transcript.ifEmpty { status }
@@ -127,9 +168,9 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
     }
 
     private fun zoneAt(x: Float): Int {
-        if (voiceMode) return if (x > width - iconW) 9 else -10
-        if (x < iconW) return -1
-        if (x > width - iconW) return 3
+        if (voiceMode) return if (x > width - iconW) Z_BACK else -10
+        if (x < iconW) return Z_SETTINGS
+        if (x > width - iconW) return Z_MIC
         val cell = (width - 2 * iconW) / 3
         return ((x - iconW) / cell).toInt().coerceIn(0, 2)
     }
@@ -140,15 +181,7 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
             MotionEvent.ACTION_DOWN -> { pressedZone = zoneAt(e.x); invalidate() }
             MotionEvent.ACTION_UP -> {
                 val z = zoneAt(e.x)
-                if (z == pressedZone) {
-                    if (hapticsOn) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    when (z) {
-                        -1 -> listener?.onSettings()
-                        3 -> listener?.onMic()
-                        9 -> listener?.onBackToKeys()
-                        in 0..2 -> arrangeSuggestions().getOrNull(z)?.let { listener?.onSuggestion(it) }
-                    }
-                }
+                if (z == pressedZone) activate(z)
                 pressedZone = -10; invalidate()
             }
             MotionEvent.ACTION_CANCEL -> { pressedZone = -10; invalidate() }

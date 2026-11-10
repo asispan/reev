@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Screen-reader actions for a key's long-press alternatives (see VirtualNodes). -->
+    <item name="a11y_alt_0" type="id" />
+    <item name="a11y_alt_1" type="id" />
+    <item name="a11y_alt_2" type="id" />
+    <item name="a11y_alt_3" type="id" />
+    <item name="a11y_alt_4" type="id" />
+    <item name="a11y_alt_5" type="id" />
+    <item name="a11y_alt_6" type="id" />
+    <item name="a11y_alt_7" type="id" />
+    <item name="a11y_alt_8" type="id" />
+    <item name="a11y_alt_9" type="id" />
+</resources>

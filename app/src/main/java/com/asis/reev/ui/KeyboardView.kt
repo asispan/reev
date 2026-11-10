@@ -60,13 +60,13 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
             KbMode.SYMBOLS -> Layouts.symbols(showSwitchKey)
             KbMode.MORE -> Layouts.moreSymbols(showSwitchKey)
         }
-        layoutKeys(); invalidate()
+        layoutKeys(); invalidate(); a11y.invalidateRoot()
     }
     var shift = ShiftState.OFF
-        set(v) { if (field != v) { field = v; invalidate() } }
+        set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
     /** IME action label: 0 = newline, else one of EditorInfo.IME_ACTION_*. */
     var enterAction = 0
-        set(v) { field = v; invalidate() }
+        set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
 
     private var rows: List<List<Key>> = Layouts.letters(false)
     private val rowH = ctx.dp(54f)
@@ -129,7 +129,44 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         setMeasuredDimension(w, h)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = layoutKeys()
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { layoutKeys(); a11y.invalidateRoot() }
+
+    // --- screen readers ---
+    // Every key is a virtual node. Keys are marked as text-entry keys, so TalkBack types the key under
+    // the finger when it lifts (or on double-tap, if the user picked that typing method in TalkBack).
+    private val a11y = VirtualNodes(this, ::a11yItems, ::a11yClick) { item, alt -> item.alts.getOrNull(alt)?.let { feedback(); listener?.onKeyText(it) } }
+
+    /** Node id = position of the key in the current layout, spacers included. */
+    private fun a11yItems(): List<A11yItem> {
+        val out = ArrayList<A11yItem>(40)
+        var id = 0
+        for (row in rows) for (k in row) {
+            val i = id++
+            if (k.type == KeyType.SPACER) continue
+            val alts = if (k.type == KeyType.CHAR) k.popup.map { KeyNames.typed(it, mode, shift) } else emptyList()
+            out += A11yItem(i, KeyNames.name(k, mode, shift, enterAction), RectF(k.l, k.t, k.r, k.b), textKey = true, alts = alts)
+        }
+        return out
+    }
+
+    /** Activation from a screen reader. The key announced is the key typed: no tap-resolution prior here. */
+    private fun a11yClick(item: A11yItem) {
+        val k = rows.flatten().getOrNull(item.id) ?: return
+        feedback()
+        when (k.type) {
+            KeyType.DELETE -> listener?.onDelete()
+            // Caps lock is a quick double-tap for touch users; a screen reader can't tap that fast, so cycle.
+            KeyType.SHIFT -> shift = when (shift) { ShiftState.OFF -> ShiftState.ON; ShiftState.ON -> ShiftState.LOCKED; ShiftState.LOCKED -> ShiftState.OFF }
+            else -> commitKey(k)
+        }
+        when (k.type) {
+            KeyType.SHIFT -> announceForAccessibility(if (shift == ShiftState.OFF) "Shift off" else KeyNames.shiftName(shift))
+            KeyType.SYMBOLS, KeyType.LETTERS, KeyType.MORE_SYMBOLS -> announceForAccessibility(KeyNames.modeName(mode))
+            else -> {}
+        }
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
 
     private fun layoutKeys() = layoutRows(rows)
 
@@ -316,6 +353,22 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         }
     }
 
+    /** What a plain tap on [k] does. Delete isn't here: it acts on touch-down and repeats. */
+    private fun commitKey(k: Key) {
+        when (k.type) {
+            KeyType.CHAR -> listener?.onKeyText(KeyNames.typed(k.label, mode, shift))
+            KeyType.SPACE -> listener?.onKeyText(" ")
+            KeyType.ENTER -> listener?.onEnter()
+            KeyType.EMOJI -> listener?.onEmoji()
+            KeyType.SHIFT -> listener?.onShift()
+            KeyType.SWITCH_IME -> listener?.onSwitchIme(false)
+            KeyType.SYMBOLS -> { mode = KbMode.SYMBOLS; listener?.onModeChange(mode) }
+            KeyType.LETTERS -> { mode = KbMode.LETTERS; listener?.onModeChange(mode) }
+            KeyType.MORE_SYMBOLS -> { mode = KbMode.MORE; listener?.onModeChange(mode) }
+            else -> {}
+        }
+    }
+
     private fun release(commit: Boolean) {
         val t = active ?: return
         handler.removeCallbacks(longPressRunnable)
@@ -327,18 +380,8 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
                 overlay?.popupValue()?.let { listener?.onKeyText(it) }
             } else if (t.gliding) {
                 listener?.onGlide(t.xs, t.ys, t.n)
-            } else if (!t.spaceDrag && !t.deleteSwipe && !t.switchLongPressed) when (k.type) {
-                KeyType.CHAR -> listener?.onKeyText(if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.label.uppercase() else k.label)
-                KeyType.SPACE -> listener?.onKeyText(" ")
-                KeyType.ENTER -> listener?.onEnter()
-                KeyType.EMOJI -> listener?.onEmoji()
-                KeyType.SHIFT -> listener?.onShift()
-                KeyType.SWITCH_IME -> listener?.onSwitchIme(false)
-                KeyType.SYMBOLS -> { mode = KbMode.SYMBOLS; listener?.onModeChange(mode) }
-                KeyType.LETTERS -> { mode = KbMode.LETTERS; listener?.onModeChange(mode) }
-                KeyType.MORE_SYMBOLS -> { mode = KbMode.MORE; listener?.onModeChange(mode) }
-                else -> {}
-            } else if (t.deleteSwipe) listener?.onDeleteWord()
+            } else if (!t.spaceDrag && !t.deleteSwipe && !t.switchLongPressed) commitKey(k)
+            else if (t.deleteSwipe) listener?.onDeleteWord()
         }
         if (t.gliding) { trailPath.reset() }
         overlay?.hidePopup()

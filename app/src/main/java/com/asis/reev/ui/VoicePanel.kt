@@ -36,11 +36,12 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
     var listener: Listener? = null
     var hapticsOn = true
     var engineLabel = ""
-        set(v) { field = v; invalidate() }
+        set(v) { field = v; invalidate(); a11y.invalidateRoot() }
     var state = State.IDLE
-        set(v) { field = v; updateAnim(); invalidate() }
+        set(v) { if (field != v) a11y.invalidateRoot(); field = v; updateAnim(); invalidate() }
+    /** A problem to show instead of the usual prompt (engine not ready, mic error). Spoken to screen readers. */
     var hint: String? = null
-        set(v) { field = v; invalidate() }
+        set(v) { if (v != null) announceForAccessibility(v); field = v; invalidate(); a11y.invalidateRoot() }
 
     /** 0..1 microphone level, smoothed. */
     private var level = 0f
@@ -171,6 +172,53 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         val er = enterRect(); c.drawRoundRect(er, context.dp(10f), context.dp(10f), accent)
         Icons.enter(c, er.centerX(), er.centerY(), context.dp(26f), accentStroke)
     }
+
+    // --- screen readers: one node per control, activated by double-tap ---
+    // Hold-to-talk can't work under explore-by-touch, so the talk button toggles: once to start
+    // (locked on), once more to stop and insert. Nothing is spoken on start or stop, because speech
+    // from the screen reader would land in the recording; the haptic tick is the confirmation.
+    private val a11y = VirtualNodes(this, ::a11yItems, ::a11yClick)
+
+    private fun a11yItems(): List<A11yItem> {
+        val out = ArrayList<A11yItem>(7)
+        val active = state == State.RECORDING || state == State.LATCHED
+        val r = btnR + context.dp(12f)
+        out += A11yItem(5, when (state) {
+            State.IDLE -> "Start dictation"
+            State.RECORDING, State.LATCHED -> "Stop and insert"
+            State.PROCESSING -> "Transcribing"
+        }, RectF(cx - r, cy - r, cx + r, cy + r), clickable = state != State.PROCESSING)
+        if (active) {
+            val (x, y) = cancelCenter(); val cr = context.dp(26f)
+            out += A11yItem(6, "Cancel dictation", RectF(x - cr, y - cr, x + cr, y + cr))
+        }
+        hint?.let { out += A11yItem(7, it, RectF(0f, cy + r, width.toFloat(), ctlY - context.dp(4f)), clickable = false) }
+        out += A11yItem(1, "Speech engine, $engineLabel", chipRect())
+        out += A11yItem(4, "Space", spaceRect())
+        out += A11yItem(2, "Delete", delRect())
+        out += A11yItem(3, "Enter", enterRect())
+        return out
+    }
+
+    private fun a11yClick(item: A11yItem) {
+        when (item.id) {
+            5 -> {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                when (state) {
+                    State.IDLE -> { listener?.onTalkStart(); if (state == State.RECORDING) state = State.LATCHED }
+                    State.RECORDING, State.LATCHED -> listener?.onTalkStop()
+                    State.PROCESSING -> {}
+                }
+            }
+            1 -> { buzz(); listener?.onEngineTap() }
+            2 -> { buzz(); listener?.onDelete() }
+            3 -> { buzz(); listener?.onEnter() }
+            4 -> { buzz(); listener?.onSpace() }
+            6 -> { buzz(); listener?.onTalkCancel() }
+        }
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
 
     // --- touch ---
     private var pressed = 0 // 0 none, 1 chip, 2 del, 3 enter, 4 space, 5 button, 6 cancel

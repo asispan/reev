@@ -28,6 +28,8 @@ class OverlayView(ctx: Context, private val pal: Palette) : View(ctx) {
     init {
         setLayerType(LAYER_TYPE_SOFTWARE, null)
         isClickable = false
+        // Purely decorative (key previews, long-press bubbles): keep it out of the screen reader's way.
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
     fun showPreview(keyRect: RectF, label: String) {

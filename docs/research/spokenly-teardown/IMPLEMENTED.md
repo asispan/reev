@@ -1,14 +1,14 @@
 # Spokenly → Reev: what was implemented
 
-Companion to `spokenly-teardown.pdf`. Version 0.2.0 (versionCode 3). Nothing is committed yet.
+Companion to `spokenly-teardown.pdf`. Version 0.2.0 (versionCode 3).
 
 ## Landed
 
 - `polish/CursorContext` + `polish/DictationPolish` — caret context read once per dictation (`getTextBeforeCursor`/`getTextAfterCursor`), leading-space and capitalisation decided from it, unit-tested across sentence start, mid-word, after punctuation, after a bracket, unknown nouns and "I". Sensitive fields get an empty context.
 - `mode/Mode` + `mode/ModeStore` — mode record (name, prompt, delivery action, apps, fallback) with three built-ins, JSON persistence, one guaranteed fallback. Long-press the engine chip cycles modes; the resolved mode shows in the idle prompt.
-- `delivery/Delivery` — insert, insert-and-send (degrades when the editor has no send action), copy, history-only; clipboard fallback with a sensitive clip and a toast. Field-change mid-flight forces copy.
+- `delivery/Delivery` — insert, insert-and-send (degrades when the editor has no send action), copy, history-only; clipboard fallback with a sensitive clip, reported in the status line (no toasts). Field-change mid-flight forces copy; sensitive fields receive nothing.
 - `transform/Transformer` — `Local` cleanup always; `Llm` (OpenAI-compatible) only when a mode has a prompt and an endpoint is keyed, falling back on any failure.
-- `history/HistoryStore` + `HistoryActivity` — raw text stored before the rewrite, status tracked, capped at 200, retry/copy/delete. `history/AppNames` for friendly labels.
+- `history/HistoryStore` + `HistoryActivity` — off by default; raw text stored before the rewrite, status tracked, capped at 200, retry/copy/delete. The screen is not exported and is `FLAG_SECURE`. `history/AppNames` for friendly labels.
 - `ui/VoicePanel` — TRANSCRIBING / INSERTED / ERROR states with their own drawing, labels and a11y strings; single reset path.
 - `ui/RationaleView` — three-row microphone rationale before the system dialog; the panel opens itself after a grant.
 - ReevService — session-id guards on every callback, a 12 s watchdog, editor-field snapshot, `onWindowHidden` cancel, and graceful failure paths.
@@ -20,9 +20,13 @@ Companion to `spokenly-teardown.pdf`. Version 0.2.0 (versionCode 3). Nothing is 
 - Two dictations into WhatsApp: inserted, correct mid-sentence spacing and lower-casing, INSERTED state with the app label, history rows with mode/app/time, no crash.
 - `assembleDebug`, `lintDebug` and 37 unit tests pass.
 
+## Release build check (emulator, API 36.1)
+
+The signed, R8-shrunk release APK, installed fresh: no crashes. Settings, the modes list and editor (JSON round-trip), the history screen, typing, the rationale, and the grant-resume path all run. After Allow, the user goes back to the app they were typing in and the voice panel opens on its own. Before this, the permission screen shared Reev's task, so a backgrounded Settings came forward instead. It now has its own task.
+
 ## Not verified / open
 
-- The grant-resume path (`onWindowShown`) compiled but was not re-run on device: the permission is already granted and `pm grant/revoke` and `cmd appops set` are blocked on this ColorOS build.
+- Dictation itself on the release build: the emulator run didn't download a model. The debug build dictated on the CPH2745.
 - AI rewrite path has no live test — no LLM key was entered.
 - Devices with the release signature need an uninstall to take a debug build; prefs and the Keystore-wrapped keys do not survive that.
 - Deferred: trigger words, word replacements, per-mode temperature, cleanup model.

@@ -47,6 +47,7 @@
             android:name=".PermissionActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:theme="@style/ReevTheme.Translucent" />
     </application>
 </manifest>

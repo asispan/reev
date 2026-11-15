@@ -27,13 +27,30 @@ import com.asis.reev.ui.Palette
 import com.asis.reev.ui.ShiftState
 import com.asis.reev.ui.TopBar
 import com.asis.reev.ui.VoicePanel
+import com.asis.reev.delivery.Delivery
+import com.asis.reev.history.HistoryStore
+import com.asis.reev.mode.DeliveryAction
+import com.asis.reev.mode.Mode
+import com.asis.reev.mode.ModeStore
+import com.asis.reev.polish.CursorContext
+import com.asis.reev.polish.DictationPolish
+import com.asis.reev.transform.Llm
+import com.asis.reev.transform.Local
+import com.asis.reev.transform.Transformer
+import android.os.SystemClock
+import android.widget.Toast
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import com.asis.reev.ui.RationaleView
 import com.asis.reev.ui.dpi
 
 class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener,
-    EmojiView.Listener, VoicePanel.Listener {
+    EmojiView.Listener, VoicePanel.Listener, RationaleView.Listener {
 
     private lateinit var prefs: Prefs
     private lateinit var suggest: Suggest
+    private lateinit var modeStore: ModeStore
+    private lateinit var history: HistoryStore
     private val main = Handler(Looper.getMainLooper())
 
     private var root: FrameLayout? = null
@@ -73,6 +90,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onCreate() {
         super.onCreate()
         prefs = Prefs(this)
+        modeStore = ModeStore(this)
+        history = HistoryStore(this)
         prefs.sp.registerOnSharedPreferenceChangeListener(themeListener)
         suggest = Suggest(this)
         Engines.warm(this, prefs.engine)
@@ -166,11 +185,18 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             showKeys()
         }
         lastCorrection = null; autoSpaced = false
+        if (this::voice.isInitialized) voice.modeLabel = modeStore.resolve(info.packageName, prefs.modeOverride).takeIf { !it.fallback }?.name.orEmpty()
         clearGlide()
         updateShift(); updateSuggestions()
     }
 
     private fun clearGlide() { glideWord = null; glideAlts = emptyList(); afterGlide = false }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        if (this::voice.isInitialized && voice.isShown &&
+            (voice.state == VoicePanel.State.RECORDING || voice.state == VoicePanel.State.LATCHED)) cancelVoice()
+    }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
@@ -472,13 +498,53 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    private var rationale: RationaleView? = null
+
     override fun onMic() {
         if (sensitive) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            startActivity(Intent(this, PermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            showRationale()
             return
         }
         showVoice()
+        if (!prefs.practiced) voice.hint = "Hold the mic and say a sentence"
+    }
+
+    /** Ask in the keyboard before the system dialog, so the first request is a decision. */
+    private fun showRationale() {
+        if (root == null) return
+        val v = rationale ?: RationaleView(this, Palette.of(this)).also {
+            it.listener = this; rationale = it
+        }
+        content.removeAllViews(); content.addView(v)
+        topBar.voiceMode = true
+        v.announceForAccessibility("How Reev hears you")
+    }
+
+    override fun onRationaleDecline() {
+        showKeys()
+        say("Keyboard")
+    }
+
+    override fun onRationaleAgree() {
+        wantVoiceAfterGrant = true
+        startActivity(Intent(this, PermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private var wantVoiceAfterGrant = false
+
+    /** Coming back from the permission dialog: open the panel if the user agreed a moment ago. */
+    override fun onWindowShown() {
+        super.onWindowShown()
+        if (!wantVoiceAfterGrant) return
+        wantVoiceAfterGrant = false
+        if (sensitive) return
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            showVoice()
+            if (!prefs.practiced) voice.hint = "Hold the mic and say a sentence"
+        } else {
+            showRationale()
+        }
     }
 
     override fun onSuggestion(word: String) {
@@ -519,28 +585,63 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onSpace() { commit(" ") }
 
     // ---------------- VoicePanel.Listener ----------------
+    // A dictation is bound to one editor field for its whole life. sessionId guards every callback;
+    // the field snapshot decides whether the finished text may be committed or has to be copied.
+
+    private var sessionMode: Mode = Mode.builtIns().first()
+    private var sessionCtx: CursorContext = CursorContext.EMPTY
+    private var sessionPkg: String = ""
+    private var sessionFieldId: Int = 0
+    private var sessionStartedAt = 0L
+    private var watchdog: Runnable? = null
+    private var resetRunnable: Runnable? = null
+    private val transformExec: ExecutorService = Executors.newSingleThreadExecutor()
+    @Volatile private var transformer: Transformer? = null
+
+    /** Chosen per utterance: the LLM only when a mode has a prompt and an endpoint is configured. */
+    private fun transformerFor(mode: Mode): Transformer {
+        val cfg = if (prefs.aiKey.isNotEmpty() && prefs.aiModel.isNotEmpty() && mode.prompt.isNotBlank()) Llm(prefs) else Local()
+        transformer = cfg
+        return cfg
+    }
+
+    /** Text either side of the caret, read once per dictation. Empty in password fields. */
+    private fun cursorContext(): CursorContext {
+        if (sensitive) return CursorContext.EMPTY
+        val ic = currentInputConnection ?: return CursorContext.EMPTY
+        val w = CursorContext.WINDOW
+        val before = runCatching { ic.getTextBeforeCursor(w, 0)?.toString() }.getOrNull() ?: return CursorContext.EMPTY
+        val after = runCatching { ic.getTextAfterCursor(w, 0)?.toString() }.getOrNull() ?: ""
+        return CursorContext(before, after)
+    }
+
     override fun onTalkStart() {
         if (session != null) return
         val engine = Engines.create(this, prefs.engine)
         engine.notReadyReason()?.let { voice.hint = it; voice.state = VoicePanel.State.IDLE; return }
-        voice.hint = null
+        voice.hint = null; voice.insertedIn = ""
         val id = ++sessionId
+        val info = currentInputEditorInfo
+        sessionPkg = info?.packageName ?: ""
+        sessionFieldId = info?.fieldId ?: 0
+        sessionMode = modeStore.resolve(sessionPkg, prefs.modeOverride)
+        sessionCtx = cursorContext()
+        sessionStartedAt = SystemClock.elapsedRealtime()
         topBar.transcript = ""; topBar.status = "Listening…"; topBar.transcriptPending = true
         val s = engine.start(object : SttCallback {
             override fun onPartial(text: String) = main.post { if (id == sessionId) topBar.transcript = text }.let {}
-            override fun onFinal(text: String) = main.post { if (id == sessionId) deliverFinal(text) }.let {}
+            override fun onFinal(text: String) = main.post { deliverFinal(id, text) }.let {}
             override fun onError(msg: String) = main.post {
                 if (id == sessionId) {
                     stopMic(); session = null
-                    voice.state = VoicePanel.State.IDLE; voice.hint = msg.take(80)
-                    topBar.transcriptPending = false; topBar.status = "Error"
+                    failSession(id, msg)
                 }
             }.let {}
         })
         session = s
         peakLevel = 0f
         val rec = MicRecorder(onChunk = { s.feed(it) }, onLevel = { lv -> if (lv > peakLevel) peakLevel = lv; main.post { voice.pushLevel(lv) } },
-            onError = { main.post { if (id == sessionId) { cancelVoice(); voice.hint = "Microphone stopped unexpectedly"; topBar.status = "Error" } } })
+            onError = { main.post { if (id == sessionId) { cancelVoice(); failSession(sessionId, "Microphone stopped unexpectedly") } } })
         if (!rec.start()) {
             s.cancel(); session = null
             voice.hint = "Microphone unavailable"; voice.state = VoicePanel.State.IDLE
@@ -548,19 +649,21 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         }
         recorder = rec
         voice.state = VoicePanel.State.RECORDING
+        armWatchdog(id)
     }
 
     override fun onTalkStop() {
+        if (voice.state != VoicePanel.State.RECORDING && voice.state != VoicePanel.State.LATCHED) return
         val s = session ?: run { voice.state = VoicePanel.State.IDLE; return }
         stopMic()
-        voice.state = VoicePanel.State.PROCESSING
-        topBar.status = "Transcribing…"
         val id = sessionId
+        voice.state = VoicePanel.State.TRANSCRIBING
+        topBar.status = "Transcribing…"
         s.finish()
         finalTimeout = Runnable {
             if (id == sessionId && session != null) {
                 s.cancel(); session = null
-                voice.state = VoicePanel.State.IDLE; voice.hint = "Timed out waiting for transcript"
+                failSession(id, "Timed out waiting for transcript")
             }
         }.also { main.postDelayed(it, 20_000) }
     }
@@ -573,51 +676,133 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     private fun stopMic() { recorder?.stop(); recorder = null }
 
+    /** Friendly name for the INSERTED label; see AppNames. */
+    private fun appName(pkg: String): String = com.asis.reev.history.AppNames.of(pkg)
+
     private fun cancelVoice() {
         stopMic()
+        transformer?.abort()
         session?.cancel(); session = null
         sessionId++
         finalTimeout?.let { main.removeCallbacks(it) }
+        clearTimers()
         if (this::voice.isInitialized) voice.state = VoicePanel.State.IDLE
     }
 
-    private fun deliverFinal(raw: String) {
-        finalTimeout?.let { main.removeCallbacks(it) }
-        session = null
-        voice.state = VoicePanel.State.IDLE
-        topBar.transcriptPending = false
-        val text = com.asis.reev.stt.TextCleanup.clean(raw, prefs.removeFillers)
-        if (text.isEmpty()) {
-            topBar.transcript = ""
-            topBar.status = if (peakLevel < 0.08f) "Mic seems silent — is another app using it?" else "Didn't catch that"
-            say(topBar.status)
-            return
-        }
-        topBar.transcript = text
-        insertDictation(text)
+    private fun clearTimers() {
+        watchdog?.let { main.removeCallbacks(it); watchdog = null }
+        resetRunnable?.let { main.removeCallbacks(it); resetRunnable = null }
     }
 
-    private fun insertDictation(text: String) {
-        val ic = currentInputConnection ?: return
-        val before = ic.getTextBeforeCursor(2, 0)?.toString() ?: ""
-        var t = text
-        val sentenceStart = before.isEmpty() || before.trimEnd().let { it.isEmpty() || it.last() in ".!?\n" }
-        if (sentenceStart) t = t.replaceFirstChar { it.uppercase() }
-        else if (t.length > 1 && t[0].isUpperCase() && t[1].isLowerCase()) {
-            // Mid-sentence: engines capitalise every utterance ("Hey Running late"). Lower-case the
-            // first word when it's an ordinary dictionary word; keep "I", "I'm" and likely names.
-            val first = t.takeWhile { it.isLetter() || it == '\'' }
-            val low = first.lowercase()
-            if (!low.startsWith("i'") && low != "i" && suggest.isKnown(low)) t = low + t.substring(first.length)
+    /** Nothing may sit in TRANSCRIBING forever, whatever the engine or the network does. */
+    private fun armWatchdog(id: Int) {
+        watchdog?.let { main.removeCallbacks(it) }
+        watchdog = Runnable {
+            if (id == sessionId && voice.state != VoicePanel.State.IDLE) {
+                session?.cancel(); session = null; stopMic()
+                failSession(id, "Timed out")
+            }
+        }.also { main.postDelayed(it, 12_000) }
+    }
+
+    private fun failSession(id: Int, msg: String) {
+        if (id != sessionId) return
+        clearTimers()
+        voice.hint = msg.take(90)
+        voice.state = VoicePanel.State.ERROR
+        topBar.transcriptPending = false; topBar.status = "Error"
+        say(msg)
+        main.postDelayed(Runnable {
+            if (id == sessionId && voice.state == VoicePanel.State.ERROR) { voice.state = VoicePanel.State.IDLE; voice.hint = null }
+        }.also { resetRunnable = it }, 2_600)
+    }
+
+    private fun deliverFinal(id: Int, raw: String) {
+        if (id != sessionId) return
+        finalTimeout?.let { main.removeCallbacks(it) }
+        watchdog?.let { main.removeCallbacks(it); watchdog = null }
+        session = null
+        topBar.transcriptPending = false
+        if (raw.isBlank()) { failSession(id, if (peakLevel < 0.08f) "Mic seems silent — is another app using it?" else "Didn't catch that"); return }
+
+        val mode = sessionMode
+        val ctx = sessionCtx
+        val appLabel = appName(sessionPkg)
+        val duration = SystemClock.elapsedRealtime() - sessionStartedAt
+        // Raw text is stored before any rewrite, so a crash or a bad endpoint can only cost the polish.
+        val entry = history.add(sessionPkg, mode.name, prefs.engine.short, duration, raw)
+
+        val tr = transformerFor(mode)
+        transformExec.execute {
+            val polished = runCatching { tr.transform(raw, mode.prompt, ctx, prefs.removeFillers) { id != sessionId } }
+                .getOrDefault(raw)
+            main.post { completeDelivery(id, entry, polished, mode, ctx, appLabel) }
         }
-        if (before.isNotEmpty() && !before.last().isWhitespace()) t = " $t"
-        val endsSentence = t.trimEnd().lastOrNull()?.let { it in ".!?" } == true
-        if (endsSentence && !t.endsWith(" ")) t += " "
-        ic.commitText(t, 1)
-        // After "…you're having." the next letter should be a capital. Set it directly: the editor's
-        // caps mode can lag a frame behind our own commit.
-        if (endsSentence && prefs.autoCap && this::keyboard.isInitialized && keyboard.shift != ShiftState.LOCKED) keyboard.shift = ShiftState.ON
-        else updateShift()
+    }
+
+    private fun completeDelivery(
+        id: Int, entry: HistoryStore.Entry?, polished: String, mode: Mode, ctx: CursorContext, appLabel: String,
+    ) {
+        // A stale session still lands in history, it just must not touch the new editor.
+        val text0 = if (polished.isBlank()) entry?.raw.orEmpty() else polished
+        if (id != sessionId) { entry?.let { history.update(it, text0, HistoryStore.Entry.Status.DONE) }; return }
+        topBar.transcript = text0
+
+        val plan = DictationPolish.plan(ctx, suggest::isKnown, DictationPolish.firstWord(text0))
+        val gated = if (prefs.smartSpacing) plan else plan.copy(leadingSpace = false)
+        val finalText = DictationPolish.apply(text0, gated, ctx, suggest::isKnown)
+
+        val sameEditor = currentInputEditorInfo?.packageName == sessionPkg &&
+            (currentInputEditorInfo?.fieldId ?: 0) == sessionFieldId
+        val action = if (sameEditor) mode.action else DeliveryAction.COPY
+        val result = Delivery.perform(this, currentInputConnection, finalText, action, currentInputEditorInfo, sensitive)
+
+        if (!sameEditor) Toast.makeText(this, "Copied — the field changed", Toast.LENGTH_SHORT).show()
+
+        when (result) {
+            Delivery.Result.SENT, Delivery.Result.INSERTED -> {
+                entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.DONE) }
+                voice.insertedIn = appLabel
+                voice.hint = null
+                prefs.practiced = true
+                voice.state = VoicePanel.State.INSERTED
+                topBar.status = "Inserted in $appLabel"
+                val ends = finalText.trimEnd().lastOrNull()?.let { it == '.' || it == '!' || it == '?' } == true
+                if (ends && prefs.autoCap && this::keyboard.isInitialized && keyboard.shift != ShiftState.LOCKED) keyboard.shift = ShiftState.ON
+                else updateShift()
+            }
+            Delivery.Result.COPIED -> {
+                entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.COPIED) }
+                voice.insertedIn = "clipboard"
+                voice.state = VoicePanel.State.INSERTED
+                topBar.status = "Copied to clipboard"
+                Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+            Delivery.Result.HISTORY_ONLY -> {
+                entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.DONE) }
+                voice.state = VoicePanel.State.IDLE
+                topBar.status = "Saved to history"
+            }
+            Delivery.Result.FAILED -> {
+                entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.FAILED) }
+                failSession(id, "Couldn't insert the text")
+                return
+            }
+        }
+        resetRunnable?.let { main.removeCallbacks(it) }
+        resetRunnable = Runnable {
+            if (id == sessionId && voice.state == VoicePanel.State.INSERTED) { voice.state = VoicePanel.State.IDLE; voice.insertedIn = "" }
+        }.also { main.postDelayed(it, 1_100) }
+    }
+
+    override fun onModeTap() {
+        val modes = modeStore.all()
+        val current = modeStore.resolve(currentInputEditorInfo?.packageName, prefs.modeOverride).id
+        val next = modes[(modes.indexOfFirst { it.id == current } + 1) % modes.size]
+        prefs.modeOverride = if (next.fallback) null else next.id
+        voice.modeLabel = if (next.fallback) "" else next.name
+        say("Mode, ${next.name}")
+        voice.hint = null
     }
 
     override fun onEngineTap() {
@@ -644,6 +829,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         prefs.sp.unregisterOnSharedPreferenceChangeListener(themeListener)
         suggest.close()
         glideExec.shutdownNow()
+        transformExec.shutdownNow()
         super.onDestroy()
     }
 }

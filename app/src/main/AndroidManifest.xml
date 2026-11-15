@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".HistoryActivity"
+            android:exported="true"
+            android:label="History"
+            android:windowSoftInputMode="adjustResize" />
+
 
         <activity
             android:name=".PermissionActivity"

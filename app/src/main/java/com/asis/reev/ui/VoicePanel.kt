@@ -21,13 +21,15 @@ import kotlin.math.sin
 /** Dictation panel: one big push-to-talk button (hold to talk, tap to lock). */
 class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
-    enum class State { IDLE, RECORDING, LATCHED, PROCESSING }
+    enum class State { IDLE, RECORDING, LATCHED, TRANSCRIBING, INSERTED, ERROR }
 
     interface Listener {
         fun onTalkStart()
         fun onTalkStop()
         fun onTalkCancel()
         fun onEngineTap()
+        /** Long-press on the engine chip: cycle the dictation mode. */
+        fun onModeTap()
         fun onDelete()
         fun onEnter()
         fun onSpace()
@@ -35,10 +37,18 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
     var listener: Listener? = null
     var hapticsOn = true
+    /** Name of the mode the next dictation will use, shown in the idle prompt. */
+    var modeLabel = ""
+        set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
+
     var engineLabel = ""
         set(v) { field = v; invalidate(); a11y.invalidateRoot() }
     var state = State.IDLE
         set(v) { if (field != v) a11y.invalidateRoot(); field = v; updateAnim(); invalidate() }
+    /** Where the last transcript went, for the INSERTED label ("Whatsapp"). */
+    var insertedIn: String = ""
+        set(v) { field = v; invalidate() }
+
     /** A problem to show instead of the usual prompt (engine not ready, mic error). Spoken to screen readers. */
     var hint: String? = null
         set(v) { if (v != null) announceForAccessibility(v); field = v; invalidate(); a11y.invalidateRoot() }
@@ -129,9 +139,14 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         // the button
         val scale = if (active) 1f + 0.04f * sin(phase * 2 * Math.PI).toFloat() else 1f
         c.drawCircle(cx, cy, btnR * scale, if (active) rec else accent)
-        if (state == State.PROCESSING) {
+        if (state == State.TRANSCRIBING) {
             val r = btnR * 0.55f
             c.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), phase * 360f, 270f, false, spin)
+        } else if (state == State.INSERTED) {
+            Icons.check(c, cx, cy, btnR * 1.05f, micStroke)
+        } else if (state == State.ERROR) {
+            val r = btnR * 0.5f
+            c.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), 0f, 359f, false, micStroke)
         } else if (state == State.LATCHED) {
             val s = btnR * 0.36f
             c.drawRoundRect(RectF(cx - s, cy - s, cx + s, cy + s), s * 0.25f, s * 0.25f, micFill)
@@ -148,10 +163,12 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
         // hint
         val h = hint ?: when (state) {
-            State.IDLE -> "Hold to talk  ·  tap to lock"
+            State.IDLE -> (if (modeLabel.isNotEmpty()) "$modeLabel  ·  " else "") + "Hold to talk  ·  tap to lock"
             State.RECORDING -> "Listening… release to insert"
             State.LATCHED -> "Listening… tap to insert"
-            State.PROCESSING -> "Transcribing…"
+            State.TRANSCRIBING -> "Transcribing…"
+            State.INSERTED -> if (insertedIn.isNotEmpty()) "Inserted in $insertedIn" else "Inserted"
+            State.ERROR -> hint ?: "Didn't catch that"
         }
         c.drawText(h, cx, cy + btnR + context.dp(30f), hintText)
 
@@ -186,8 +203,10 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         out += A11yItem(5, when (state) {
             State.IDLE -> "Start dictation"
             State.RECORDING, State.LATCHED -> "Stop and insert"
-            State.PROCESSING -> "Transcribing"
-        }, RectF(cx - r, cy - r, cx + r, cy + r), clickable = state != State.PROCESSING)
+            State.TRANSCRIBING -> "Transcribing"
+            State.INSERTED -> if (insertedIn.isNotEmpty()) "Inserted in $insertedIn" else "Inserted"
+            State.ERROR -> hint ?: "Didn't catch that"
+        }, RectF(cx - r, cy - r, cx + r, cy + r), clickable = state != State.TRANSCRIBING)
         if (active) {
             val (x, y) = cancelCenter(); val cr = context.dp(26f)
             out += A11yItem(6, "Cancel dictation", RectF(x - cr, y - cr, x + cr, y + cr))
@@ -205,9 +224,9 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             5 -> {
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 when (state) {
-                    State.IDLE -> { listener?.onTalkStart(); if (state == State.RECORDING) state = State.LATCHED }
+                    State.IDLE, State.INSERTED, State.ERROR -> { listener?.onTalkStart(); if (state == State.RECORDING) state = State.LATCHED }
                     State.RECORDING, State.LATCHED -> listener?.onTalkStop()
-                    State.PROCESSING -> {}
+                    State.TRANSCRIBING -> {}
                 }
             }
             1 -> { buzz(); listener?.onEngineTap() }
@@ -223,6 +242,8 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
     // --- touch ---
     private var pressed = 0 // 0 none, 1 chip, 2 del, 3 enter, 4 space, 5 button, 6 cancel
     private var downAt = 0L
+    private var longPressFired = false
+    private val longPress = Runnable { if (pressed == 1) { longPressFired = true; buzz(); listener?.onModeTap() } }
     private val handler = Handler(Looper.getMainLooper())
     private val delRepeat = object : Runnable {
         override fun run() { if (pressed == 2) { listener?.onDelete(); handler.postDelayed(this, 60) } }
@@ -251,10 +272,11 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
                 downAt = System.currentTimeMillis()
                 when (pressed) {
                     5 -> when (state) {
-                        State.IDLE -> { buzz(HapticFeedbackConstants.VIRTUAL_KEY); listener?.onTalkStart() }
+                        State.IDLE, State.INSERTED, State.ERROR -> { buzz(HapticFeedbackConstants.VIRTUAL_KEY); listener?.onTalkStart() }
                         State.LATCHED -> {}
                         else -> {}
                     }
+                    1 -> { handler.postDelayed(longPress, 450) }
                     2 -> { buzz(); listener?.onDelete(); handler.postDelayed(delRepeat, 400) }
                     0 -> {}
                     else -> buzz()
@@ -270,17 +292,18 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
                         State.LATCHED -> { buzz(HapticFeedbackConstants.VIRTUAL_KEY); listener?.onTalkStop() }
                         else -> {}
                     }
-                    1 -> if (z == 1) listener?.onEngineTap()
+                    1 -> if (z == 1 && !longPressFired) listener?.onEngineTap()
                     3 -> if (z == 3) listener?.onEnter()
                     4 -> if (z == 4) listener?.onSpace()
                     6 -> if (z == 6) listener?.onTalkCancel()
                 }
-                handler.removeCallbacks(delRepeat)
+                handler.removeCallbacks(delRepeat); handler.removeCallbacks(longPress)
+                longPressFired = false
                 pressed = 0; invalidate()
             }
             MotionEvent.ACTION_CANCEL -> {
                 if (pressed == 5 && state == State.RECORDING) listener?.onTalkStop()
-                handler.removeCallbacks(delRepeat); pressed = 0; invalidate()
+                handler.removeCallbacks(delRepeat); handler.removeCallbacks(longPress); longPressFired = false; pressed = 0; invalidate()
             }
         }
         return true

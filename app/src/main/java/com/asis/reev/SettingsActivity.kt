@@ -26,6 +26,8 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import com.asis.reev.mode.DeliveryAction
+import com.asis.reev.mode.Mode
 import com.asis.reev.stt.Engines
 import com.asis.reev.stt.LocalModel
 import com.asis.reev.stt.LocalParakeet
@@ -34,6 +36,7 @@ import com.asis.reev.ui.dpi
 
 class SettingsActivity : Activity() {
     private lateinit var prefs: Prefs
+    private lateinit var modes: com.asis.reev.mode.ModeStore
     private val main = Handler(Looper.getMainLooper())
 
     private class ModelViews(val bar: ProgressBar, val status: TextView, val btn: Button)
@@ -67,6 +70,7 @@ class SettingsActivity : Activity() {
         // API keys are on this screen: keep it out of screenshots, screen recordings and the recents preview.
         window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         prefs = Prefs(this)
+        modes = com.asis.reev.mode.ModeStore(this)
     }
 
     override fun onResume() { super.onResume(); visible = true; ModelManager.addListener(downloadListener); render() }
@@ -153,6 +157,28 @@ class SettingsActivity : Activity() {
         keys.addView(text("Stored only on this phone (app-private storage). Audio is streamed to the provider you pick.", 13f, sub))
         listOf(Engine.ELEVENLABS, Engine.SARVAM, Engine.SMALLEST, Engine.CARTESIA).forEach { e -> keyField(keys, e) }
 
+        // ---- modes
+        val md = section("Dictation modes")
+        md.addView(text("A mode decides how a transcript is shaped and delivered. It picks itself by app; " +
+            "long-press the engine chip in the voice panel to cycle modes by hand.", 13f, sub))
+        modes.all().forEach { m ->
+            md.addView(modeRow(m))
+        }
+        md.addView(button("Add mode") { editMode(null) }, spaced())
+
+        // ---- ai
+        val ai = section("AI rewrite (optional)")
+        ai.addView(text("Modes with instructions send the transcript to an OpenAI-compatible endpoint. " +
+            "Without a key, modes still work — you get local cleanup only.", 13f, sub))
+        ai.addView(text("Endpoint", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
+        ai.addView(field(prefs.aiBase, "https://api.openai.com/v1", false) { prefs.aiBase = it })
+        ai.addView(text("Model", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
+        ai.addView(field(prefs.aiModel, "gpt-4o-mini", false) { prefs.aiModel = it })
+        ai.addView(text("API key", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
+        ai.addView(field(prefs.aiKey, "sk-… (clear the field to delete it)", true) { prefs.aiKey = it })
+        ai.addView(text("The endpoint sees the transcript and the text before the caret, never the audio.", 12.5f, sub)
+            .also { it.setPadding(0, dpi(10), 0, 0) })
+
         // ---- typing
         val typ = section("Keyboard")
         typ.addView(text("Theme", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(4), 0, dpi(2)) })
@@ -176,6 +202,9 @@ class SettingsActivity : Activity() {
         toggle(typ, "Double-space for period", prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }
         toggle(typ, "Remove filler words (um, uh) from dictation", prefs.removeFillers) { prefs.removeFillers = it }
         toggle(typ, "Mic button starts listening immediately", prefs.autoStartVoice) { prefs.autoStartVoice = it }
+        toggle(typ, "Add a space when dictating mid-sentence", prefs.smartSpacing) { prefs.smartSpacing = it }
+        toggle(typ, "Keep a dictation history", prefs.historyEnabled) { prefs.historyEnabled = it }
+        typ.addView(button("Open history") { startActivity(Intent(this, HistoryActivity::class.java)) }, spaced())
         typ.addView(button("Forget learned words") {
             Suggest.forgetAll(this)
             android.app.AlertDialog.Builder(this).setMessage("Learned words deleted from this phone.").setPositiveButton("OK", null).show()
@@ -298,6 +327,114 @@ class SettingsActivity : Activity() {
         background = rounded(accent, 20); setPadding(dpi(16), 0, dpi(16), 0); minHeight = dpi(38); minimumHeight = dpi(38)
         stateListAnimator = null
         setOnClickListener { onClick() }
+    }
+
+    // ---- modes editing
+
+    private fun modeRow(m: Mode): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpi(10), 0, dpi(10))
+            isFocusable = true
+            contentDescription = "${m.name}. ${if (m.fallback) "fallback mode" else m.action.id}. Tap to edit."
+            setOnClickListener { editMode(m) }
+        }
+        row.addView(text(m.name + if (m.fallback) "  (fallback)" else "", 15f, fg, bold = true))
+        val detail = buildString {
+            append(
+                when (m.action) {
+                    DeliveryAction.INSERT -> "Insert the text"
+                    DeliveryAction.INSERT_SEND -> "Insert and send"
+                    DeliveryAction.COPY -> "Copy to clipboard"
+                    DeliveryAction.HISTORY_ONLY -> "History only"
+                }
+            )
+            if (m.apps.isNotEmpty()) append(" · ").append(m.apps.joinToString(", ") { com.asis.reev.history.AppNames.of(it) })
+            if (m.prompt.isNotBlank()) append(" · has AI instructions")
+        }
+        row.addView(text(detail, 12.5f, sub).also { it.setPadding(0, dpi(3), 0, 0) })
+        return row
+    }
+
+    private fun editMode(existing: Mode?) {
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dpi(20), dpi(12), dpi(20), 0) }
+        body.addView(text("Name", 12.5f, sub))
+        val name = EditText(this).apply {
+            setText(existing?.name.orEmpty()); setHintTextColor(sub); setTextColor(fg)
+            background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(8), dpi(12), dpi(8))
+        }
+        body.addView(name)
+        body.addView(text("Instructions for the AI (optional)", 12.5f, sub).also { it.setPadding(0, dpi(10), 0, 0) })
+        val prompt = EditText(this).apply {
+            setText(existing?.prompt.orEmpty()); minLines = 4; gravity = Gravity.TOP; setHintTextColor(sub); setTextColor(fg)
+            background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(8), dpi(12), dpi(8))
+        }
+        body.addView(prompt)
+        body.addView(text("After dictation", 12.5f, sub).also { it.setPadding(0, dpi(10), 0, 0) })
+        val actions = RadioGroup(this)
+        DeliveryAction.entries.forEach { a ->
+            actions.addView(RadioButton(this).apply {
+                text = when (a) {
+                    DeliveryAction.INSERT -> "Insert the text"
+                    DeliveryAction.INSERT_SEND -> "Insert and send"
+                    DeliveryAction.COPY -> "Copy to clipboard"
+                    DeliveryAction.HISTORY_ONLY -> "Save to history only"
+                }
+                setTextColor(fg); textSize = 14.5f; id = View.generateViewId(); tag = a
+                buttonTintList = android.content.res.ColorStateList.valueOf(accent)
+                isChecked = existing?.action == a || (existing == null && a == DeliveryAction.INSERT)
+            })
+        }
+        body.addView(actions)
+        body.addView(text("Apps (comma-separated package names)", 12.5f, sub).also { it.setPadding(0, dpi(10), 0, 0) })
+        val apps = EditText(this).apply {
+            setText(existing?.apps.orEmpty().joinToString(", ")); setHintTextColor(sub); setTextColor(fg); isSingleLine = true
+            background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(8), dpi(12), dpi(8))
+        }
+        body.addView(apps)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle(if (existing == null) "New mode" else "Edit mode")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        if (existing != null && !existing.fallback) {
+            dialog.setButton(android.app.AlertDialog.BUTTON_NEUTRAL, "Delete") { _, _ -> modes.delete(existing.id); render() }
+        }
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val label = name.text.toString().trim().ifEmpty { "Mode" }
+                val action = actions.findViewById<View>(actions.checkedRadioButtonId)?.tag as? DeliveryAction ?: DeliveryAction.INSERT
+                val pkgList = apps.text.toString().split(',').map { it.trim() }.filter { it.contains('.') }
+                modes.upsert(
+                    Mode(
+                        id = existing?.id ?: "mode-" + System.currentTimeMillis(),
+                        name = label, prompt = prompt.text.toString().trim(), action = action,
+                        apps = pkgList, fallback = existing?.fallback ?: false,
+                    )
+                )
+                dialog.dismiss(); render()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun field(value: String, hint: String, secret: Boolean, onChange: (String) -> Unit): EditText {
+        val et = EditText(this).apply {
+            setText(value); this.hint = hint; setTextColor(fg); setHintTextColor(sub); textSize = 14f; isSingleLine = true
+            background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(10), dpi(12), dpi(10))
+            if (secret) {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+            }
+            addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) = onChange(s.toString())
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+        }
+        return et
     }
 
     private fun rounded(c: Int, r: Int) = GradientDrawable().apply { setColor(c); cornerRadius = dpi(r).toFloat() }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.asis.reev"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.2"
+        versionCode = 3
+        versionName = "0.2.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         // Dependency-free on-device accessibility check; see app/src/androidTest.
         testInstrumentationRunner = "com.asis.reev.A11yProbe"
@@ -64,4 +64,6 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    // org.json is a stub in unit tests; the real one lets Mode/history JSON round-trip be tested.
+    testImplementation("org.json:json:20240303")
 }

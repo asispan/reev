@@ -66,6 +66,7 @@ class Prefs(ctx: Context) {
     companion object {
         /** Process-wide: the IME and the settings screen each hold their own Prefs instance. */
         private val KEY_LOCK = Any()
+        const val AI_FIELD = "ekey_ai"
     }
 
     var haptics: Boolean
@@ -123,4 +124,48 @@ class Prefs(ctx: Context) {
     var recentEmoji: String
         get() = sp.getString("recent_emoji", "😂 ❤️ 👍 🙏 😊 🔥 😍 🎉") ?: ""
         set(v) = sp.edit().putString("recent_emoji", v).apply()
+
+    /** Space before a dictation that starts mid-sentence, and the mirror of smart capitalisation. */
+    var smartSpacing: Boolean
+        get() = sp.getBoolean("smart_spacing", true)
+        set(v) = sp.edit().putBoolean("smart_spacing", v).apply()
+
+    /** First successful dictation already happened; the practice hint is not shown again. */
+    var practiced: Boolean
+        get() = sp.getBoolean("practiced", false)
+        set(v) = sp.edit().putBoolean("practiced", v).apply()
+
+    /** Keep transcripts in the history list. Off means nothing is written. */
+    var historyEnabled: Boolean
+        get() = sp.getBoolean("history", true)
+        set(v) = sp.edit().putBoolean("history", v).apply()
+
+    /** Sticky mode chosen from the voice panel; null means "pick by app". */
+    var modeOverride: String?
+        get() = sp.getString("mode_override", null)
+        set(v) = sp.edit().putString("mode_override", v).apply()
+
+    /** OpenAI-compatible endpoint used by modes with a prompt. Empty model or key means local only. */
+    var aiBase: String
+        get() = sp.getString("ai_base", "https://api.openai.com/v1") ?: ""
+        set(v) = sp.edit().putString("ai_base", v.trim()).apply()
+
+    var aiModel: String
+        get() = sp.getString("ai_model", "") ?: ""
+        set(v) = sp.edit().putString("ai_model", v.trim()).apply()
+
+    /** Encrypted like the STT keys, under one shared "ekey_ai" slot. */
+    var aiKey: String
+        get() = synchronized(KEY_LOCK) {
+            val blob = sp.getString(AI_FIELD, null) ?: return ""
+            KeyVault.decrypt(blob, AI_FIELD)?.trim() ?: ""
+        }
+        set(v) {
+            synchronized(KEY_LOCK) {
+                val t = v.trim()
+                val ed = sp.edit()
+                if (t.isEmpty()) ed.remove(AI_FIELD) else ed.putString(AI_FIELD, KeyVault.encrypt(t, AI_FIELD))
+                ed.apply()
+            }
+        }
 }

@@ -14,8 +14,8 @@ import com.asis.reev.mode.DeliveryAction
  *
  * The mode states intent; the editor decides mechanism. "Send" degrades to a plain insert when the
  * field has no send action, and every path that cannot insert falls back to the clipboard so the text
- * is never lost. Clipboard clips are marked sensitive so the transcript stays out of the system
- * clipboard preview.
+ * is never lost — except in sensitive fields, where nothing is delivered at all. Clipboard clips
+ * are marked sensitive so the transcript stays out of the system clipboard preview.
  */
 object Delivery {
 
@@ -29,9 +29,10 @@ object Delivery {
         info: EditorInfo?,
         sensitive: Boolean,
     ): Result {
-        if (text.isEmpty()) return Result.FAILED
+        // Password, PIN and incognito fields never receive dictation, not even via the clipboard.
+        if (text.isEmpty() || sensitive) return Result.FAILED
         if (action == DeliveryAction.HISTORY_ONLY) return Result.HISTORY_ONLY
-        if (action == DeliveryAction.COPY || sensitive) return copy(ctx, text)
+        if (action == DeliveryAction.COPY) return copy(ctx, text)
 
         // A live composing region (glide) would be clobbered by a commit: end it first.
         runCatching { ic?.finishComposingText() }

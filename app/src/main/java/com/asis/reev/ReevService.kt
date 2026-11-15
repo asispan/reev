@@ -38,7 +38,6 @@ import com.asis.reev.transform.Llm
 import com.asis.reev.transform.Local
 import com.asis.reev.transform.Transformer
 import android.os.SystemClock
-import android.widget.Toast
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import com.asis.reev.ui.RationaleView
@@ -754,10 +753,14 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
         val sameEditor = currentInputEditorInfo?.packageName == sessionPkg &&
             (currentInputEditorInfo?.fieldId ?: 0) == sessionFieldId
-        val action = if (sameEditor) mode.action else DeliveryAction.COPY
+        // The field changed under the dictation, or "history only" with history switched off:
+        // copy rather than insert into the wrong place or drop the text.
+        val action = when {
+            !sameEditor -> DeliveryAction.COPY
+            mode.action == DeliveryAction.HISTORY_ONLY && !history.enabled -> DeliveryAction.COPY
+            else -> mode.action
+        }
         val result = Delivery.perform(this, currentInputConnection, finalText, action, currentInputEditorInfo, sensitive)
-
-        if (!sameEditor) Toast.makeText(this, "Copied — the field changed", Toast.LENGTH_SHORT).show()
 
         when (result) {
             Delivery.Result.SENT, Delivery.Result.INSERTED -> {
@@ -775,8 +778,9 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
                 entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.COPIED) }
                 voice.insertedIn = "clipboard"
                 voice.state = VoicePanel.State.INSERTED
-                topBar.status = "Copied to clipboard"
-                Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                // Status line and screen reader only: a keyboard draws nothing outside its own window.
+                topBar.status = if (!sameEditor) "Copied to clipboard — the field changed" else "Copied to clipboard"
+                say(topBar.status)
             }
             Delivery.Result.HISTORY_ONLY -> {
                 entry?.let { history.update(it, finalText, HistoryStore.Entry.Status.DONE) }

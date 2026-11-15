@@ -56,7 +56,9 @@ class Llm(private val prefs: Prefs) : Transformer {
     private fun requestBody(prompt: String, text: String, ctx: CursorContext): String {
         val system = SYSTEM_PROMPT + "\n### User-requested transformation\n" + prompt.trim()
         val user = buildString {
-            if (ctx.before.isNotBlank()) append("Text after the caret so far (do not repeat it): ...").append(ctx.before.takeLast(400)).append("\n\n")
+            // Context only: the last 400 characters before the caret, so the rewrite continues the sentence.
+            if (ctx.before.isNotBlank()) append("Text already in the field, before the caret (context only, do not repeat it): ...")
+                .append(ctx.before.takeLast(400)).append("\n\nTranscript to transform:\n")
             append(text)
         }
         return JSONObject().apply {

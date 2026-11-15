@@ -1,12 +1,12 @@
 # Reev privacy policy
 
-_Last updated: 4 November 2026_
+_Last updated: 15 November 2026_
 
 Reev is a keyboard for Android with voice dictation, published on Google Play by Sudo AI. This policy explains what Reev does with your data. In short: **Reev has no servers, no accounts, no analytics and no ads.**
 
 ## What Reev processes
 
-**What you type.** Keystrokes are handled on your phone so they can be inserted into the text field you're using. Reev does not store, log or transmit what you type. To improve suggestions, Reev counts how often you use words. Counts for words already in its built-in dictionary live only in memory. Words that are *not* in the dictionary (for example names or slang) are saved, with a usage count, in Reev's private storage on your phone, up to 2,000 words. Reev never learns from password, PIN or incognito fields, or anything containing digits or symbols (so no emails, URLs, codes or numbers). You can delete the list at any time in Settings → **Forget learned words**.
+**What you type.** Keystrokes are handled on your phone so they can be inserted into the text field you're using. Reev does not store, log or transmit what you type, except in the two opt-in cases under **AI rewrite** and **Dictation history** below. To improve suggestions, Reev counts how often you use words. Counts for words already in its built-in dictionary live only in memory. Words that are *not* in the dictionary (for example names or slang) are saved, with a usage count, in Reev's private storage on your phone, up to 2,000 words. Reev never learns from password, PIN or incognito fields, or anything containing digits or symbols (so no emails, URLs, codes or numbers). You can delete the list at any time in Settings → **Forget learned words**.
 
 **Your voice (microphone).** Reev only records during a dictation you start: while you hold the talk button, or after you tap it to lock recording on, until you tap again. The mic is unavailable in password, PIN and incognito fields. What happens to that audio depends on the engine you pick:
 
@@ -16,6 +16,14 @@ Reev is a keyboard for Android with voice dictation, published on Google Play by
   - [Cartesia](https://cartesia.ai/legal/privacy.html)
   - [Smallest AI](https://smallest.ai/privacy-policy)
   - [Sarvam](https://www.sarvam.ai/privacy-policy)
+
+**Text around the cursor.** When a dictation starts, Reev reads the text just before and after your cursor in the field you're using. On your phone it decides two small things: whether the dictation needs a leading space, and whether it should start with a capital letter. It is not stored. Reev never reads it in password, PIN or incognito fields.
+
+**AI rewrite (off unless you set it up).** A dictation mode can carry instructions such as "rewrite this as a chat message". Those instructions only run if you enter an AI endpoint, model and your own API key in Settings. When they do, Reev sends that provider the transcript, plus up to 400 characters of the text just before your cursor so the rewrite fits your sentence. It sends nothing else, and never audio. The request goes over an encrypted connection (TLS) directly from your phone to the endpoint you entered, and that provider's own privacy policy applies. Without an endpoint, modes only apply on-device cleanup.
+
+**Dictation history (off by default).** If you turn on "Keep a dictation history" in Settings, Reev keeps up to your last 200 dictations in its private storage on your phone. For each one it keeps the original transcript, the text that was inserted, the mode, the app it went into, the time and the duration. Audio is never kept. The history screen is hidden from screenshots. You can delete one entry or all of them on that screen, and turning the setting off stops anything new being saved.
+
+**Clipboard.** Reev copies a dictation to the clipboard only when a mode is set to "Copy to clipboard", when the text field changed before the transcript was ready, or when you tap Copy in history. Those copies are marked as sensitive, so Android hides them from the clipboard preview. Nothing is ever copied from password, PIN or incognito fields.
 
 **API keys.** Keys you enter are encrypted with a key held in your phone's Android Keystore and stored only in Reev's private storage. They're excluded from Android backups, hidden from screenshots of the settings screen, and sent only to the provider they belong to, to authenticate your requests. Clear the field in Settings to delete a key.
 
@@ -31,7 +39,7 @@ Reev is a keyboard for Android with voice dictation, published on Google Play by
 ## Permissions
 
 - **Microphone:** for dictation, only during a dictation you start.
-- **Internet:** to download on-device models, and for cloud engines if you choose one.
+- **Internet:** to download on-device models, for cloud engines if you choose one, and for AI rewrite if you set up an endpoint.
 
 ## Children
 
@@ -39,7 +47,7 @@ Reev isn't directed at children under 13.
 
 ## Deleting your data
 
-Everything Reev stores lives on your phone. Clear Reev's storage in Android Settings, or uninstall the app, and all of it is deleted, including learned words, settings, API keys and downloaded models.
+Everything Reev stores lives on your phone. Clear Reev's storage in Android Settings, or uninstall the app, and all of it is deleted, including learned words, dictation history, settings, API keys and downloaded models.
 
 ## Contact
 

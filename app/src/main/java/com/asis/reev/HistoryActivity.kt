@@ -38,6 +38,8 @@ class HistoryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Transcripts are private: keep them out of screenshots, recordings and the recents preview.
+        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         prefs = Prefs(this)
         store = HistoryStore(this)
         render()
@@ -58,7 +60,9 @@ class HistoryActivity : Activity() {
 
         val entries = store.recent()
         if (entries.isEmpty()) {
-            col.addView(text("Nothing yet. Dictate once and it lands here.", 14f, sub).also { it.setPadding(0, dpi(8), 0, 0) })
+            val msg = if (store.enabled) "Nothing yet. Dictate once and it lands here."
+                else "History is off, so nothing is kept. Turn on \"Keep a dictation history\" in Reev settings."
+            col.addView(text(msg, 14f, sub).also { it.setPadding(0, dpi(8), 0, 0) })
         }
         entries.forEach { e ->
             val row = LinearLayout(this).apply {
@@ -118,7 +122,7 @@ class HistoryActivity : Activity() {
                     val text = tr.transform(e.raw, mode.prompt, com.asis.reev.polish.CursorContext.EMPTY, false) { false }
                     runOnUiThread {
                         Delivery.perform(this, null, text, DeliveryAction.COPY, null, false)
-                        android.widget.Toast.makeText(this, "Retried and copied", android.widget.Toast.LENGTH_SHORT).show()
+                        AlertDialog.Builder(this).setMessage("Retried and copied to the clipboard.").setPositiveButton("OK", null).show()
                     }
                 }
                 out.start()

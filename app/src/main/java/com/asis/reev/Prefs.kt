@@ -135,9 +135,9 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("practiced", false)
         set(v) = sp.edit().putBoolean("practiced", v).apply()
 
-    /** Keep transcripts in the history list. Off means nothing is written. */
+    /** Keep transcripts in the history list. Off (the default) means nothing is written. */
     var historyEnabled: Boolean
-        get() = sp.getBoolean("history", true)
+        get() = sp.getBoolean("history", false)
         set(v) = sp.edit().putBoolean("history", v).apply()
 
     /** Sticky mode chosen from the voice panel; null means "pick by app". */

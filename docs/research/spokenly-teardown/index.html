@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spokenly teardown — what Reev should take</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 19mm 15mm; background: #FAF8F4; }
+  @page { @bottom-right { content: counter(page); font-family: "Excon"; font-size: 8pt; color: #8B8F9C; } }
+  @page { @bottom-left { content: "Reev research · Spokenly v1.0.2"; font-family: "Excon"; font-size: 7.5pt; color: #8B8F9C; } }
+  * { box-sizing: border-box; }
+  html { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body { margin: 0; background: #FAF8F4; color: #121826; font-family: "Ranade"; font-weight: 300;
+         font-size: 10.2pt; line-height: 1.55; }
+  h1, h2, h3, h4 { font-weight: 300; letter-spacing: -0.011em; margin: 0; }
+  .tight { font-size: 9.5pt; line-height: 1.5; }
+  .tight li { margin-bottom: 1.1mm; }
+  .tight p { margin-bottom: 2.4mm; }
+  .tight h3 { margin: 5mm 0 1.5mm; }
+  h2 { font-size: 20pt; line-height: 1.16; margin: 0 0 5mm; }
+  h3 { font-size: 12.4pt; line-height: 1.3; margin: 7mm 0 2mm; break-after: avoid; page-break-after: avoid; }
+  h4 { font-size: 10.6pt; font-weight: 500; margin: 5mm 0 1.5mm; break-after: avoid; }
+  p { margin: 0 0 3.2mm; max-width: 66ch; }
+  ul, ol { margin: 0 0 3.4mm; padding-left: 5mm; max-width: 66ch; }
+  li { margin-bottom: 1.6mm; }
+  strong { font-weight: 500; }
+  em { font-style: italic; }
+  a { color: #0E8C8C; text-decoration: none; }
+  .kicker { font-family: "Excon"; font-weight: 500; font-size: 8.2pt; color: #0B6E70; letter-spacing: .02em; margin-bottom: 2mm; }
+  .num { font-family: "Excon"; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .rule { border-top: 1px solid rgba(18,24,38,.10); margin: 6mm 0; }
+  .rule-hard { border-top: 1.4px solid #121826; margin: 4mm 0 5mm; }
+  section.page { page-break-before: always; }
+  figure { margin: 4mm 0 5mm; break-inside: avoid; page-break-inside: avoid; }
+  figure img { width: 100%; max-height: 74mm; object-fit: contain; border: 1px solid rgba(18,24,38,.10); display: block; }
+  .two figure img { max-height: 84mm; }
+  .g3 { display: flex; gap: 4mm; align-items: flex-start; }
+  .g3 > figure { flex: 1; }
+  .g3 figure img { max-height: 62mm; }
+  figcaption { font-family: "Excon"; font-size: 7.8pt; color: #8B8F9C; margin-top: 1.8mm; line-height: 1.45; }
+  .two { display: flex; gap: 5mm; }
+  .two > figure { flex: 1; }
+  .callout { background: #F2EFE9; border-left: 2px solid #E2336B; padding: 3.5mm 4mm; margin: 4mm 0; break-inside: avoid; }
+  .callout p:last-child { margin-bottom: 0; }
+  .note { background: #F2EFE9; padding: 3.5mm 4mm; margin: 4mm 0; break-inside: avoid; font-size: 9.4pt; }
+  table { width: 100%; border-collapse: collapse; font-family: "Excon"; font-size: 8.3pt; margin: 3mm 0 5mm; }
+  th { text-align: left; font-weight: 500; border-bottom: 1.2px solid #121826; padding: 2mm 2.5mm 2mm 0; }
+  td { overflow-wrap: anywhere; border-bottom: 1px solid rgba(18,24,38,.10); padding: 2mm 2.5mm 2mm 0; vertical-align: top; line-height: 1.45; }
+  tbody.grp { break-inside: avoid; }
+  td.y { color: #0E8C8C; font-weight: 500; }
+  td.n { color: #E2336B; font-weight: 500; }
+  .tag { font-family: "Excon"; font-size: 7.4pt; background: #F2EFE9; padding: .8mm 1.8mm; color: #475066; }
+  .tag.p0 { background: #E2336B; color: #FAF8F4; }
+  .tag.p1 { background: #0E8C8C; color: #FAF8F4; }
+  code, .mono { overflow-wrap: anywhere; font-family: "Plex Mono", Menlo, monospace; font-size: 8.4pt; background: #F2EFE9; padding: .3mm 1.2mm; }
+  /* cover */
+  .cover { height: 254mm; display: flex; flex-direction: column; }
+  .cover .top { display: flex; justify-content: space-between; font-family: "Excon"; font-size: 8pt; color: #8B8F9C; }
+  .cover h1 { font-family: "Excon"; font-weight: 500; font-size: 39pt; line-height: 1.05; letter-spacing: -.028em; margin-top: 12mm; max-width: 26ch; color: #0C1120; }
+  .cover .deck { font-size: 12.6pt; line-height: 1.45; color: #2B3346; max-width: 37ch; margin-top: 6mm; }
+  .cover .glow { flex: 1; min-height: 58mm; margin: 9mm 0 0; border-radius: 1.2mm 1.2mm 0 0;
+    background: radial-gradient(62% 80% at 16% 50%, #E2336B 0%, #FF9DB8 24%, #5FD0C4 58%, #D8FFF8 100%),
+                radial-gradient(46% 64% at 86% 50%, #8FE0D6 0%, rgba(143,224,214,0) 78%);
+    background-blend-mode: normal; }
+  .kpis { display: flex; gap: 7mm; border-top: 1.4px solid #121826; padding-top: 3.5mm; margin-top: 9mm; }
+  .kpis div { flex: 1; }
+  .kpis .v { font-family: "Excon"; font-weight: 500; font-size: 15pt; letter-spacing: -.01em; color: #121826; }
+  .kpis .l { font-family: "Excon"; font-size: 7.4pt; color: #475066; line-height: 1.45; margin-top: 1.2mm; }
+  .cover .meta { margin-top: 7mm; font-family: "Excon"; font-size: 7.4pt; color: #8B8F9C; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="top"><span>Reev research note</span><span>14 November 2026</span></div>
+  <h1>What Spokenly gets right,<br>and what Reev should take</h1>
+  <p class="deck">A static and runtime teardown of app.spokenly.android 1.0.2 — the dictation loop, the insertion ladder, the mode system and the copy — mapped onto Reev's own codebase.</p>
+  <div class="glow" title="Reev signature gradient"></div>
+  <div class="kpis">
+    <div><div class="v">5</div><div class="l">Kotlin classes in the whole app; all logic is in a 12 MB Rust core</div></div>
+    <div><div class="v">3</div><div class="l">Fallback tiers before the text is abandoned to the clipboard</div></div>
+    <div><div class="v">16</div><div class="l">Fields in one mode: prompt, tone, action, model, temperature</div></div>
+    <div><div class="v">7</div><div class="l">Onboarding steps, ending in a dictated sentence</div></div>
+  </div>
+  <div class="meta">Artifact: base.apk sha256 99d20f79…17dd86 · jadx-headless-mcp 0.7.1 · REA 6.4.0 · runtime capture on CPH2745 (Android 16, ColorOS)<br>
+  Static observations are labelled as such; everything in the “observed” sections was reproduced on device.</div>
+</div>
+
+<section class="page tight">
+  <div class="kicker">Verdict</div>
+  <h2>Six disciplines made this app good, and Reev can take all six</h2>
+  <p>The app is a thin shell around a serious engine. Almost none of its competence is in its UI code; it is in a Rust core that owns models, prompts, cursor context, delivery policy and history. That is why the surface can stay calm — the hard parts were moved somewhere they could be tested. Reev is already a keyboard, so it starts ahead on insertion. What it lacks is the discipline around it.</p>
+
+  <h3>Take these six</h3>
+  <ol>
+    <li><strong>A mode object, not a settings page.</strong> Per-app prompt, tone, delivery action, activation, trigger words, model and temperature in one record, with three modes shipped.</li>
+    <li><strong>Cursor context as an input.</strong> Two thousand characters either side of the caret, read every time, driving spacing, capitalisation and sentence continuity.</li>
+    <li><strong>An insertion ladder that degrades, never fails.</strong> Connection, then focus-and-paste, then clipboard plus a toast that says where the text went.</li>
+    <li><strong>Bubble states as a state machine.</strong> Idle, recording, transcribing, processing, inserted, collapsed — each with its own shape, motion and label.</li>
+    <li><strong>Trust-first permission copy.</strong> What appears, what it does, what it never reads. Then a practice run that ends in a real sentence.</li>
+    <li><strong>Errors that name the next action.</strong> "No sound was detected. Check your microphone and try again."</li>
+  </ol>
+
+  <h3>Leave these three</h3>
+  <ol>
+    <li><strong>Accessibility-only field detection.</strong> The bubble needs <span class="mono">getInputMethod()</span>; on ColorOS it never fired outside Spokenly's own app. An IME does not care.</li>
+    <li><strong>A rupee ceiling on basics.</strong> Anything accurate sits behind a three-day trial that auto-charges ₹1,650 a month.</li>
+    <li><strong>Half-finished per-mode plumbing.</strong> Activation, trigger words and delivery action exist in the core; no Android sheet exposes them.</li>
+  </ol>
+
+  <div class="callout">
+    <p><strong>Bottom line.</strong> Copy the mode system, the cursor-context polish and the state machine — they are the actual product. Keep the IME as the primary insertion path and treat accessibility as the hardware-keyboard fallback.</p>
+  </div>
+</section>
+<section class="page">
+  <div class="kicker">Method and artifact</div>
+  <h2>The APK is a manifest of intent: what they chose to build is visible before a single line of behaviour</h2>
+  <p>Everything below comes from the installed package, pulled over USB debugging with the user's consent, plus a runtime pass on the same device. Static reads used JADX (full decompile, 3,869 source files) and REA's Android provider over the audited jadx-headless-mcp 0.7.1 JAR, which produces digest-bound evidence per call. Native reads used <span class="mono">strings</span> over the shipped arm64 libraries.</p>
+
+  <table>
+    <tbody class="grp">
+      <tr><th style="width:32%">Fact</th><th>Value</th></tr>
+      <tr><td>Package</td><td class="num">app.spokenly.android · versionName 1.0.2 · versionCode 8</td></tr>
+      <tr><td>SDK range</td><td class="num">minSdk 33 · targetSdk 36 · compiled against 37</td></tr>
+      <tr><td>Code surface</td><td class="num">3,871 classes, of which 5 are the app's own</td></tr>
+      <tr><td>Native payload (arm64 split)</td><td class="num">libonnxruntime.so 25.8 MB · libspokenly_android.so 12.2 MB · libc++_shared · libjnidispatch</td></tr>
+      <tr><td>Core interface</td><td class="num">103 UniFFI entry points, 30+ callback methods into the host</td></tr>
+      <tr><td>Permissions</td><td class="num">RECORD_AUDIO, FOREGROUND_SERVICE_MICROPHONE, POST_NOTIFICATIONS, BILLING, INTERNET, ACCESS_NETWORK_STATE, WAKE_LOCK, VIBRATE</td></tr>
+      <tr><td>Accessibility config</td><td class="mono">typeViewFocused|typeWindowStateChanged|typeWindowsChanged · flagRetrieveInteractiveWindows|flagInputMethodEditor · canRetrieveWindowContent</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <p><strong>What is inference.</strong> The Rust core is stripped of most symbol names; where a behaviour is asserted from strings, the log-line name is quoted. Bubble geometry, states, the insertion ladder and every screen in this document were observed on device. Nothing here was executed under a debugger.</p>
+  </div>
+
+  <h3>Architecture in one line</h3>
+  <p>Kotlin does four things — draw Compose, own the accessibility service, own the microphone service, and pass the result of every core call back into the system. The rest is Rust: model download and verification, inference over ONNX Runtime and whisper.cpp, provider HTTP, prompt assembly, cleanup, history, billing state, sync. <span class="mono">RustContextKt.initializeRustContext</span> loads the JNI library; <span class="mono">SpokenlyCore</span> is constructed with a <span class="mono">CoreHost</span> callback object that the core calls back into for <span class="mono">deliver()</span>, <span class="mono">cursorContext()</span>, <span class="mono">stateChanged()</span>, <span class="mono">alert()</span>, <span class="mono">subscriptionRequired()</span> and model-download progress.</p>
+  <p>The split matters for Reev more than any individual feature. Spokenly can ship a Mac app, a Windows app and this Android client off one core because the platform layer is only ever asked for text in, text out, plus focus. Reev's equivalent would be a <span class="mono">dictation-core</span> module that knows nothing about <span class="mono">InputConnection</span>.</p>
+
+  <h3>Speech engines, both sides of the wire</h3>
+  <table>
+    <tbody class="grp">
+      <tr><th style="width:24%">Layer</th><th>What is actually there</th></tr>
+      <tr><td>On-device</td><td>Parakeet TDT 0.6B v2/v3 and <em>Parakeet Ultra</em> as int8 ONNX from <span class="mono">cdn.spokenly.app/releases/models/*.tar.gz</span>, sha256 pinned per file; Whisper tiny/base/small/large-v3-turbo and a q5_0 turbo via <span class="mono">ggml-*.bin</span>; <em>phonon-2-int8</em>; <span class="mono">whichlang</span> for language ID; <span class="mono">transcribe-rs 0.3.11</span> as the runtime</td></tr>
+      <tr><td>Local cleanup</td><td><span class="mono">cleanup-1-q8_0.gguf</span> — a small GGUF that rewrites the transcript with punctuation, filler removal and a tone directive, guarded by "The text is too long for the cleanup model"</td></tr>
+      <tr><td>Hosted</td><td>Two proxied models behind their own backend (<span class="mono">api2.spokenly.app</span>, <span class="mono">dictation.assemblyai.com</span>), sold as the Pro tier</td></tr>
+      <tr><td>Bring-your-own-key</td><td>AssemblyAI, Deepgram, ElevenLabs Scribe, Cartesia, Soniox, Gemini, OpenAI, xAI, Groq, Mistral, Cohere, Fireworks, Sarvam, Alibaba, Microsoft MAI, Straico, OpenRouter, any OpenAI-compatible base URL, plus LLM providers for the rewrite step</td></tr>
+      <tr><td>Streaming</td><td>WebSocket sessions with <span class="mono">commit_strategy=vad</span> and <span class="mono">no_verbatim=</span>, Opus-encoded frames, WAV fallback when Opus fails; live transcription is opt-in with a warning dialog because it costs accuracy</td></tr>
+    </tbody>
+  </table>
+  <p>Reev's <span class="mono">stt/</span> package already has the same shape — <span class="mono">LocalParakeet</span>, <span class="mono">CloudEngines</span>, <span class="mono">WsSession</span>, <span class="mono">ModelManager</span> — with five engines. Spokenly's breadth is not the lesson; its <em>verification</em> is. Every local model carries a sha256 in the catalog, is extracted to internal storage and is re-checked before load, which is the pattern Reev's ModelManager mostly follows already.</p>
+</section>
+
+<section class="page">
+  <div class="kicker">The dictation loop</div>
+  <h2>A bubble that is a state machine, not a button</h2>
+  <p>The whole product hinges on one 294×181 px overlay and the six states behind it. The service adds a Compose view as <span class="mono">TYPE_ACCESSIBILITY_OVERLAY</span>, <span class="mono">WRAP_CONTENT</span>, gravity top-end, <span class="mono">FLAG_NOT_FOCUSABLE | FLAG_WATCH_OUTSIDE_TOUCH</span>, translucent, and — the line that makes it usable — <span class="mono">INSET_PARENT_FRAME_BY_IME</span> so it rides the keyboard's top edge instead of hiding under it. Initial offset is one third down the screen; drag moves it, and a touch outside sends <span class="mono">ACTION_OUTSIDE</span> to collapse it.</p>
+  <p>The visual states are an enum in the UI layer: <span class="mono">IDLE, RECORDING, TRANSCRIBING, PROCESSING, INSERTED, COLLAPSED</span>. Idle is a compact pill with a white mic disc and a chevron. Tapping it swaps to a wide pill holding a cancel ✕, a live level row, a running timer and a confirm ✓ — and starts a sound cue plus a forward notification. Edge corner radius animates 26 dp to 16 dp on a 480 ms spring, so the shape change reads as a squash, not a swap.</p>
+
+  <div class="two">
+    <figure><img src="assets/s5.png" alt="Idle bubble above the keyboard"><figcaption>Idle. Compact pill, white mic disc, chevron to expand; parked above the keyboard by the IME inset flag.</figcaption></figure>
+    <figure><img src="assets/r1.png" alt="Recording state"><figcaption>Recording. Cancel, level meter, timer, confirm. Two seconds in, the room was quiet so the meter is flat.</figcaption></figure>
+  </div>
+
+  <h3>Sound and notification carry the state outside the bubble</h3>
+  <p>A <span class="mono">SoundPool</span> is loaded with two cues, <span class="mono">raw/start</span> and <span class="mono">raw/end</span>, played on stream <span class="mono">USAGE_ASSISTANCE_SONIFICATION</span> so they duck under media. Dictation runs in a foreground service typed <span class="mono">microphone</span> with an ongoing, low-importance notification titled <em>Spokenly is listening</em> on a <span class="mono">dictation</span> channel. If Android refuses the foreground start, the catch block sets the state back to idle, re-renders the bubble, raises a toast — "Android didn't let Spokenly start recording. Try again." — and stops the service cleanly. Nothing is left half-lit.</p>
+
+  <div class="note">
+    <p><strong>For Reev.</strong> <span class="mono">ui/VoicePanel.kt</span> and <span class="mono">ui/OverlayView.kt</span> already exist. The gap is not the panel, it is the state contract: make recording, transcribing, inserting and failed first-class states with their own shape, label and cue, and make every exit path restore idle in one call. An IME does not need the accessibility overlay at all — the panel can live inside the keyboard window.</p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="kicker">Insertion</div>
+  <h2>Text lands in three tiers, and the last one is honest about failing</h2>
+  <p>Delivery is the part Reev can learn the most from, because Spokenly has to solve a harder problem than Reev does and its ladder shows exactly where the failures are.</p>
+  <ol>
+    <li><strong>Accessibility input connection.</strong> <span class="mono">service.getInputMethod().getCurrentInputConnection().commitText(text, 1, null)</span>. This commits into the focused editor with cursor and selection intact, no clipboard, no paste intent. For <em>insert and send</em> the same connection issues <span class="mono">performEditorAction(4)</span> (IME_ACTION_SEND).</li>
+    <li><strong>Focus and paste.</strong> If the connection is gone the service takes <span class="mono">findFocus(FOCUS_INPUT)</span>; a non-editable node falls through, an editable one gets the text on the clipboard and <span class="mono">performAction(ACTION_PASTE)</span>.</li>
+    <li><strong>Clipboard plus a truth-telling toast.</strong> If the paste action is refused the text stays on the clipboard and a toast says the insert failed and where the text went — never a silent loss.</li>
+  </ol>
+  <p>The mode's delivery action gates all of it: <em>insert</em>, <em>insert and send</em>, <em>copy only</em>, or <em>history only</em>. A separate <em>auto-copy</em> preference forces the clipboard path for users who want to review before pasting.</p>
+
+  <h3>Cursor context is read before every dictation</h3>
+  <p>Before the core delivers, the host answers <span class="mono">cursorContext()</span> by calling <span class="mono">getSurroundingText(2000, 2000, 0)</span> and slicing at the selection: everything before the caret, everything after. The core consumes it two ways.</p>
+  <ul>
+    <li><strong>Mechanical polish.</strong> Smart spacing and smart capitalisation are decided here. Log lines name the rules: "SmartCapitalization: uppercase decided, before: ", "SmartSpacing: no leading space, the characters before the cursor are whitespace", "SmartCapitalization: keeping lowercase, the previous sentence has no final punctuation". A dictation that begins mid-sentence stays lowercase without a leading space.</li>
+    <li><strong>Semantic continuity.</strong> The cleanup model receives the preceding text with the transcript, so it continues the user's sentence and register instead of writing a fresh one — "CleanupModelStep: Dropped the mark of the previous sentence because a space is before the cursor".</li>
+  </ul>
+
+  <div class="callout">
+    <p><strong>Observed failure worth designing around.</strong> On this ColorOS build the accessibility input method never started in third-party apps: WhatsApp, Telegram and Chrome all showed a focused field and a keyboard, and no bubble. Inside Spokenly's own practice field — which sets <span class="mono">privateImeOptions="app.spokenly.bubbleTest"</span> — it worked every time. The bubble gate requires <span class="mono">getWindows()</span> to report an IME window and a non-null editor info; when either is missing it is torn down. An IME owns its connection outright, which is why Reev's <span class="mono">commitText</span> path will not have this hole.</p>
+  </div>
+</section>
+<section class="page">
+  <div class="kicker">Modes</div>
+  <h2>The mode is the product: 16 fields that turn one transcript into the right utterance for the app you are in</h2>
+  <p>A Spokenly mode is a record, not a toggle. The core's <span class="mono">Mode</span> struct carries an id, name, description, main prompt, shortcut, trigger words, output model, LLM provider and its fallback, transcription model, reasoning effort, custom system prompt, temperature, cleanup model, cleanup tone, activation mode, an app action (<span class="mono">autoInsert</span> / <span class="mono">pasteAndSend</span> / <span class="mono">copyToClipboard</span> / <span class="mono">historyOnly</span>), a smart-settings override and a bundle identifier. Modes can be reordered and moved; a shortcut claimed twice is stripped from the second mode with a log line.</p>
+  <p>Activation is one of <em>automatic</em>, <em>push to talk</em> or <em>toggle</em>. Trigger words switch mode mid-session — "TranscriptProcessingService: trigger word picked mode '…'" — and word replacements run as regex or literal, before or after the AI stage, so "reev" can become "Reev" without teaching the model anything.</p>
+
+  <div class="two">
+    <figure><img src="assets/md.png" alt="Modes list"><figcaption>Three modes ship by default: a pass-through default, one for chat, one for AI prompts. Prompt text is the row subtitle, so behaviour is legible without opening anything.</figcaption></figure>
+    <figure><img src="assets/ma.png" alt="Advanced settings sheet"><figcaption>Per-mode overrides: text model, dictation model, reasoning effort, temperature, system prompt. All default to inherit.</figcaption></figure>
+  </div>
+
+  <h3>The prompts they actually ship</h3>
+  <p>The built-in prompts are short, specific and constrain the output shape as hard as the content. These are verbatim from the app.</p>
+  <div class="note">
+    <p><strong>Messages.</strong> "Rewrite the dictated text as a natural chat message: drop filler words and false starts, fix punctuation. Keep the original language, greeting, wording, and details. Output only the message."</p>
+    <p style="margin-bottom:0"><strong>AI Prompts.</strong> "The dictated text is a prompt the speaker is composing for an AI assistant. Clean it up: drop filler words and false starts, fix grammar and punctuation. Keep the original language, wording, and details. Never write a new prompt about the text or add instructions of your own. Output only the cleaned-up text."</p>
+  </div>
+  <p>Both are wrapped by a shared system prompt that pins the format so no mode has to repeat it: an assistant whose task is transformation only, returning nothing but the transformed text, no commentary, no quotes, no markdown unless asked, preserving meaning, and a reminder that the input came from speech recognition. A <span class="mono">tone:</span> directive is appended from the mode's cleanup tone (<em>unchanged</em>, <em>lowered</em>, <em>muted</em>, <em>email</em>) and a <span class="mono">before:</span> line carries the cursor context.</p>
+
+  <h3>Where the rewrite runs</h3>
+  <p>Three stages, in order, each optional: mechanical polish (spacing, capitalisation, replacements), the cleanup model on-device, then the LLM transform if the mode has a prompt and a provider. Each stage emits a <span class="mono">TransformationStage</span> into a <span class="mono">DictationSuccessData</span>, which is what the history detail sheet renders as "Original transcription" beside the final output. The user can always see what was said and what was written.</p>
+
+  <div class="callout">
+    <p><strong>For Reev.</strong> This is the highest-value piece and the one that fits a keyboard best, because a keyboard knows the package name before the first frame. Implement <span class="mono">Mode(id, name, prompt, appAction, tone, temperature, modelOverride, triggerWords, activation)</span> in <span class="mono">Prefs.kt</span>, ship three defaults, and resolve the active mode from the editor's package name in <span class="mono">ReevService.onStartInputView</span>. The transform belongs on a background dispatcher after STT, gated by the mode's delivery action. Reev's existing <span class="mono">removeFillers</span> flag becomes the tone-pipeline default rather than a standalone switch.</p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="kicker">Onboarding and copy</div>
+  <h2>Seven steps that earn the permission before asking for it, and end with a real sentence</h2>
+  <p>The flow is a paywall first, then an accessibility rationale, then practice — and the rationale is the best-written screen in the app. It states the mechanism, the benefit and the limit in three two-line rows: shows the button when you type in any app, inserts your text into the selected field, reads nothing else and collects nothing. The service description string repeats it for the system dialog.</p>
+
+  <div class="two">
+    <figure><img src="assets/s3.png" alt="Accessibility rationale"><figcaption>Hero glyph, one claim per row, a decline option that is not a dead end. Segmented progress tells the user exactly where they are.</figcaption></figure>
+    <figure><img src="assets/s4.png" alt="Practice screen"><figcaption>Practice: numbered steps, an oversized field, and the bubble live above the keyboard. Step one ticks itself when the field is tapped.</figcaption></figure>
+  </div>
+
+  <p>Practice is not a video or a tooltip. It puts a real field on screen, ticks step one when it is tapped, and only advances when a transcript actually returns — then closes on "The Spokenly button is ready! You can now dictate in any app with the Spokenly button." The user leaves having dictated once.</p>
+
+  <h3>Copy rules this app follows</h3>
+  <ul>
+    <li><strong>Name the next action in every error.</strong> "No sound was detected. Check your microphone and try again." "No microphone was found. Connect one and try again." "Local-only mode blocks online voice models. Turn it off or pick a local model." "You need to sign in to transcribe. Sign in, then try again."</li>
+    <li><strong>Explain the surprising state before it happens.</strong> "Keep Spokenly open and stay on this screen until setup is complete" sits under the download bar, with elapsed minutes and a storage warning on larger models.</li>
+    <li><strong>Be specific about consequences, not vague.</strong> "Live transcription uses more battery and can be slightly less accurate." "Cleanup adds a short delay." "Auto-copy puts every transcript on the clipboard, so other apps can read it."</li>
+    <li><strong>Label everything for a screen reader.</strong> Every control in the bubble and the panel has a name — "Start dictation", "Stop dictation", "Cancel and discard", "Change mode". The bubble announces "Inserted in &lt;app&gt;" on success.</li>
+  </ul>
+
+  <div class="note">
+    <p><strong>For Reev.</strong> Reev's 0.1.2 release already exposed every key, the mic and the voice panel to TalkBack — the vocabulary is there. What is missing is a rationale screen for the microphone and a practice loop before the user is dropped into a bare keyboard. Copy the row structure and the "reads nothing else" framing; it is the difference between a permission and a decision.</p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="kicker">The rest of the surface</div>
+  <h2>The same discipline holds in the screens nobody screenshots for a launch post</h2>
+  <p>Settings, model catalogue, history and the result state are where dictation apps usually rot. Here each one keeps the same rules: one decision per row, a plain-language consequence, and a state that names what just happened. The point of showing them is not the feature list — it is that the restraint is systematic rather than a marketing veneer.</p>
+
+  <div class="two"><figure><img src="assets/st.png" alt="Settings"><figcaption>Settings groups four toggles that all change behaviour the user can feel — auto-copy, smart spacing, smart capitalisation, local-only — each with an inline info affordance rather than a help article. Appearance is a three-way value, not a switch.</figcaption></figure>
+  <figure><img src="assets/vm.png" alt="Voice models, local tab"><figcaption>Model catalogue, split into cloud, local and own keys. Installed state is a tick plus delete; absent state is a download with the exact size. Parakeet V3, 473 MB, is the shipped default.</figcaption></figure></div>
+  <div class="two"><figure><img src="assets/hs.png" alt="History"><figcaption>History is a plain reverse-chronological list with a search pill, row text and timestamp. The chevron is the only affordance, so nothing competes with reading.</figcaption></figure>
+  <figure><img src="assets/mp.png" alt="Dictation details"><figcaption>The detail sheet is the provenance trail: audio scrubbing, the original transcript, then copy, share, retry, then date, duration, model, mode and the app it went into.</figcaption></figure></div>
+
+  <div class="two">
+    <figure><img src="assets/tr1.png" alt="In-app recording"><figcaption>The in-app recorder: timer, level row, red stop, grey cancel — a different grammar from the bubble because here the app owns the field.</figcaption></figure>
+    <figure><img src="assets/st3.png" alt="Result state"><figcaption>Result text sits bare on the page with Share and Copy beneath it. No card, no chrome, nothing to dismiss.</figcaption></figure>
+  </div>
+
+  <h3>The paywall, in Reev terms</h3>
+  <figure><img src="assets/s2.png" alt="Paywall"><figcaption>Three-day trial, ₹1,650 a month or ₹8,000 for six with a "save 20%" badge, one white call to action, "no payment due now", and the four legal links a reviewer looks for.</figcaption></figure>
+  <p>Note what is <em>not</em> gated: local models, cleanup, smart spacing, capitalisation, the bubble, history and the practice flow all work on the free tier. Only the hosted models, the desktop app and extra language coverage sit behind Pro. That is a defensible line for Reev to compare against, since Reev's free tier already includes on-device Parakeet and the user's own keys.</p>
+</section>
+<section class="page">
+  <div class="kicker">Gap analysis</div>
+  <h2>Where Reev stands against each capability</h2>
+  <table>
+    <tbody class="grp">
+      <tr><th style="width:26%">Capability</th><th style="width:11%">Reev</th><th>Detail</th></tr>
+      <tr><td>Insertion into the focused field</td><td class="y">Ahead</td><td>Native <span class="mono">InputConnection.commitText</span> as the IME. Spokenly needs accessibility and, on this device, mostly failed to appear.</td></tr>
+      <tr><td>On-device speech</td><td class="y">Parity</td><td>sherpa-onnx Parakeet locally, model manager with verification. Spokenly additionally ships Whisper and a cleanup GGUF.</td></tr>
+      <tr><td>Cloud and BYOK breadth</td><td class="n">Behind</td><td>Reev has four providers; Spokenly has sixteen plus any OpenAI-compatible endpoint, with streaming and Opus upload.</td></tr>
+      <tr><td>Cellar-level polish</td><td class="n">Behind</td><td>No cursor context, no smart spacing, no smart capitalisation; <span class="mono">autoCap</span> is a blunt per-sentence toggle.</td></tr>
+      <tr><td>Modes and per-app action</td><td class="n">Missing</td><td>No mode object, no prompts, no insert-and-send, no history-only.</td></tr>
+      <tr><td>Cleanup and tone</td><td class="n">Partial</td><td>Regex <span class="mono">removeFillers</span> only; no punctuation model, no tone, no stage trace.</td></tr>
+      <tr><td>History and provenance</td><td class="n">Missing</td><td>Spokenly keeps audio, original transcript, final output, model, mode, app, duration, with retry and share.</td></tr>
+      <tr><td>Onboarding and rationale</td><td class="n">Behind</td><td>Permission activity exists; no rationale, no practice loop, no state-by-state guidance.</td></tr>
+      <tr><td>Hinglish and Odia</td><td class="y">Ahead</td><td>Reev's lexicon, glide and Hinglish suggestions have no Spokenly equivalent; Sarvam is one of its BYOK rows but not the focus.</td></tr>
+      <tr><td>Subscription pressure</td><td class="y">Ahead</td><td>Reev is free with your own keys; Spokenly charges ₹1,650/month after three days.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Sequenced plan</h3>
+  <table>
+    <tbody class="grp">
+      <tr><th style="width:8%">Tier</th><th style="width:30%">Work</th><th>Point of code</th></tr>
+      <tr><td><span class="tag p0">P0</span></td><td>Read surrounding text at dictation start; apply spacing and capitalisation from it; pass it to cleanup</td><td><span class="mono">ReevService.onStartInputView</span> captures <span class="mono">getSurroundingText(2000,2000,0)</span>; new <span class="mono">polish/CursorContext.kt</span>; unit tests for the sentence-boundary cases</td></tr>
+      <tr><td><span class="tag p0">P0</span></td><td>Voice panel becomes a state machine with a state contract and cue per state</td><td><span class="mono">ui/VoicePanel.kt</span>, <span class="mono">ui/OverlayView.kt</span>; single <span class="mono">setState()</span> entry, idle restored on every exit</td></tr>
+      <tr><td><span class="tag p1">P1</span></td><td>Mode object with three defaults, resolved by package name, delivering insert / send / copy / history-only</td><td><span class="mono">Prefs.kt</span> + new <span class="mono">ModeStore.kt</span>; transform after STT in <span class="mono">stt/Stt.kt</span>; send via <span class="mono">performEditorAction</span></td></tr>
+      <tr><td><span class="tag p1">P1</span></td><td>Rationale screen and practice loop before first use</td><td><span class="mono">PermissionActivity.kt</span> rework; practice field inside the keyboard, progress states</td></tr>
+      <tr><td><span class="tag p1">P1</span></td><td>History store: audio, original, output, model, app, duration; retry and share</td><td>new <span class="mono">history/</span> package, encrypted at rest like <span class="mono">KeyVault</span></td></tr>
+      <tr><td><span class="tag">P2</span></td><td>Cleanup model and tone directives; optional local punctuation pass</td><td><span class="mono">polish/</span>, model shipped through <span class="mono">ModelManager</span></td></tr>
+      <tr><td><span class="tag">P2</span></td><td>Trigger words and per-mode activation; word replacements with before/after timing</td><td>mode store, session listener</td></tr>
+      <tr><td><span class="tag">P2</span></td><td>Streaming providers with VAD commit and Opus upload</td><td><span class="mono">stt/WsSession.kt</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="page">
+  <div class="kicker">Costs and risks</div>
+  <h2>What copying this actually costs</h2>
+  <ul>
+    <li><strong>Battery and heat.</strong> A 0.6B parameter model plus a cleanup model on every dictation is real work. Spokenly mitigates with int8 weights, a small cleanup net and by defaulting cleanup off for short utterances. Reev should measure mAh per hundred dictations before shipping cleanup on by default.</li>
+    <li><strong>Latency budget.</strong> The rewrite stage is a second model call after the transcript. Spokenly keeps the confirm affordance in the bubble during it and shows "Processing", so the wait is legible. Budget under 800 ms for chat modes or the insertion feels late.</li>
+    <li><strong>Privacy surface.</strong> Cursor context means the keyboard now reads text it did not type. Reev's privacy note has to say so, and the local-only switch has to hold for cleanup too.</li>
+    <li><strong>Accessibility overlay, if added.</strong> It is a second, permanently visible window with a second permission to explain, and on ColorOS it was unreliable. Add it only for the hardware-keyboard case.</li>
+    <li><strong>Prompt maintenance.</strong> Every prompt is a product surface that will drift with model upgrades. Keep them in one versioned file with a test that asserts output shape, exactly as Spokenly's shared system prompt does.</li>
+    <li><strong>Licensing.</strong> Parakeet weights are CC-BY-4.0; whisper.cpp is MIT with model weights under MIT from OpenAI. The cleanup GGUF is theirs — check its licence before redistributing, or train a replacement.</li>
+  </ul>
+
+  <div class="rule-hard"></div>
+  <h3>Appendix — evidence</h3>
+  <p>Working directory <span class="mono">~/.hermes/cache/scratch/spokenly/</span>: <span class="mono">base.apk</span>, <span class="mono">split_arm64.apk</span>, <span class="mono">pkg.json</span> (manifest evidence), <span class="mono">res.json</span> (decoded resources), <span class="mono">jadxout/</span> (full decompile), <span class="mono">so/…/spokenly.strings.txt</span> (native strings, 8,852 lines), <span class="mono">en_copy.txt</span> (378 English UI strings by file), and the eighteen screenshots reproduced here. Key source reads: <span class="mono">app/spokenly/DictationAccessibilityService.java</span>, <span class="mono">defpackage/n4.java</span> (delivery ladder), <span class="mono">defpackage/c3.java</span> (cursor context), <span class="mono">defpackage/j10.java</span> (editor filter), <span class="mono">defpackage/fk.java</span> (bubble states).</p>
+  <p style="color:#8B8F9C;font-size:8.6pt">Prepared for Reev. Static analysis never executed the APK; runtime observations are from a CPH2745 on Android 16 with ColorOS 16, Spokenly 1.0.2 (8), local-only mode on and Parakeet V3 installed.</p>
+</section>
+
+</body>
+</html>

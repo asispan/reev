@@ -18,10 +18,10 @@ class Lexicon(
     data class Contraction(val form: String, val count: Long, val plainCount: Long, val ambiguous: Boolean)
 
     companion object {
-        /** Tagged "eh" in words.tsv but not English words: hidden with Hinglish off. Ambiguous ones (main, hi, hum, log, par, ab, bas, na, ya, ho, pe, beta, papa, dil) stay English. */
+        /** Tagged "eh" in words.tsv but not English words: hidden with Hinglish off. Words that are also English (main, hi, hum, log, par, ab, bas, na, ya, ho, pe, beta, papa, dil, mere, jab, koi, agar) stay. */
         private val HINGLISH_DUAL = setOf(
             "hai", "toh", "kya", "ki", "ka", "ke", "se", "mein", "ek", "ko", "yeh", "kar", "karna", "yaar", "hoon",
-            "jab", "agar", "tha", "thi", "koi", "tum", "gaya", "mere", "abhi", "bhai", "dost", "bada",
+            "tha", "thi", "tum", "gaya", "abhi", "bhai", "dost", "bada",
         )
     }
 

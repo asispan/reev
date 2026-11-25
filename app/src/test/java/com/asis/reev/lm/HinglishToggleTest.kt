@@ -19,7 +19,7 @@ class HinglishToggleTest {
         assertTrue("predictions after 'hi': $next", next.none { it in hinglish })
         assertTrue(lex.suggest("ha", null).none { it == "hai" })
         lex.learned["yaar"] = 5
-        assertFalse(lex.suggest("yaa", null).drop(1).contains("yaar"))
+        assertFalse(lex.suggest("yaa", null).contains("yaar"))
         lex.learned.remove("yaar")
     }
 
@@ -31,5 +31,9 @@ class HinglishToggleTest {
     @Test fun englishWordsStay() {
         lex.hinglish = false
         assertTrue(lex.suggest("mai", null).contains("main"))
+        // Romanised Hindi that is also English stays offered.
+        val vocab = lex.glideVocab().map { it.first }.toSet()
+        for (w in listOf("mere", "jab", "koi", "agar", "main", "hi")) assertTrue(w, w in vocab)
+        for (w in listOf("hai", "toh", "kya", "yaar")) assertFalse(w, w in vocab)
     }
 }

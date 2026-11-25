@@ -59,11 +59,18 @@ class HistoryActivity : Activity() {
         col.addView(text("Dictations from every app, newest first. Tap a row to see the original and the delivered text.", 13.5f, sub)
             .also { it.setPadding(0, dpi(4), 0, dpi(14)) })
 
+        // Matches HistoryStore: a file in app-private storage, and the app opts out of Android backup.
+        col.addView(text("When history is on, Reev saves the text of each dictation (not the audio) on this phone only, with the app, mode and time. " +
+            "Delete one entry or all of them on this screen.", 12.5f, sub).also { it.setPadding(0, 0, 0, dpi(10)) })
+
         val entries = store.recent()
         if (entries.isEmpty()) {
-            val msg = if (store.enabled) "Nothing yet. Dictate once and it lands here."
-                else "History is off, so nothing is kept. Turn on \"Keep a dictation history\" in Reev settings."
+            val msg = if (store.enabled) "Nothing yet. Dictate once and it lands here." else "History is off, so nothing is kept."
             col.addView(text(msg, 14f, sub).also { it.setPadding(0, dpi(8), 0, 0) })
+            if (!store.enabled) col.addView(button("Turn on history") {
+                store.enabled = true
+                render()
+            }.also { it.minimumHeight = dpi(48) }, spaced().also { it.topMargin = dpi(14) })
         }
         entries.forEach { e ->
             val row = LinearLayout(this).apply {

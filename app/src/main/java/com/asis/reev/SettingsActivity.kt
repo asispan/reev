@@ -68,19 +68,36 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // API keys are on this screen: keep it out of screenshots, screen recordings and the recents preview.
-        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // Debug builds skip it so QA runs and bug reports can capture the screen; release builds always set it.
+        if (!BuildConfig.DEBUG) window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         prefs = Prefs(this)
         modes = com.asis.reev.mode.ModeStore(this)
     }
 
-    override fun onResume() { super.onResume(); visible = true; ModelManager.addListener(downloadListener); render() }
+    override fun onResume() {
+        super.onResume(); visible = true; ModelManager.addListener(downloadListener); render()
+        if (intent?.getBooleanExtra(EXTRA_JUMP_ENGINE, false) == true) { intent.removeExtra(EXTRA_JUMP_ENGINE); jumpToEngine() }
+    }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent) }
     override fun onPause() { visible = false; ModelManager.removeListener(downloadListener); super.onPause() }
     override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) refreshSetup() }
 
     private var setupBox: LinearLayout? = null
+    private var scroller: ScrollView? = null
+    private var modelBox: View? = null
+    private var keysBox: View? = null
+
+    companion object { const val EXTRA_JUMP_ENGINE = "jump_engine" }
+
+    /** Scrolls to where a dictation engine is obtained: the model download, or the API keys in cloud mode. */
+    private fun jumpToEngine() {
+        val sv = scroller ?: return
+        val target = (if (prefs.engine == Engine.LOCAL) modelBox else keysBox) ?: return
+        sv.post { sv.smoothScrollTo(0, (target.top - dpi(48)).coerceAtLeast(0)) }
+    }
 
     private fun render() {
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).also { scroller = it }
         col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dpi(18), dpi(28), dpi(18), dpi(40)) }
         scroll.addView(col)
         setContentView(scroll)
@@ -112,8 +129,8 @@ class SettingsActivity : Activity() {
         val segCloud = segment("API keys (cloud)")
         val seg = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; background = rounded(Color.parseColor("#26282E"), 12)
-            setPadding(dpi(3), dpi(3), dpi(3), dpi(3))
-            addView(segLocal, LinearLayout.LayoutParams(0, dpi(40), 1f)); addView(segCloud, LinearLayout.LayoutParams(0, dpi(40), 1f))
+            setPadding(dpi(3), 0, dpi(3), 0)
+            addView(segLocal, LinearLayout.LayoutParams(0, dpi(48), 1f)); addView(segCloud, LinearLayout.LayoutParams(0, dpi(48), 1f))
         }
         val providers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dpi(10), 0, 0) }
         providers.addView(text("Provider", 13.5f, fg, bold = true))
@@ -132,8 +149,8 @@ class SettingsActivity : Activity() {
         val modeNote = text("", 12.5f, sub).also { it.setPadding(0, dpi(10), 0, 0) }
         fun showMode() {
             val local = prefs.engine == Engine.LOCAL
-            segLocal.background = if (local) rounded(accent, 10) else null
-            segCloud.background = if (local) null else rounded(accent, 10)
+            segLocal.background = if (local) segPill() else null
+            segCloud.background = if (local) null else segPill()
             segLocal.setTextColor(if (local) Color.WHITE else sub); segCloud.setTextColor(if (local) sub else Color.WHITE)
             providers.visibility = if (local) View.GONE else View.VISIBLE
             segLocal.isSelected = local; segCloud.isSelected = !local   // announced by screen readers
@@ -148,12 +165,14 @@ class SettingsActivity : Activity() {
 
         // ---- local model
         val loc = section("On-device model (NVIDIA Parakeet)")
+        modelBox = loc
         loc.addView(text("Runs fully offline on the phone via sherpa-onnx. Needs a one-time download over Wi-Fi.", 13f, sub))
         val mg = RadioGroup(this)
         LocalModel.entries.forEach { m -> modelRow(loc, mg, m) }
 
         // ---- api keys
         val keys = section("Cloud API keys")
+        keysBox = keys
         keys.addView(text("Stored only on this phone (app-private storage). Audio is streamed to the provider you pick.", 13f, sub))
         listOf(Engine.ELEVENLABS, Engine.SARVAM, Engine.SMALLEST, Engine.CARTESIA).forEach { e -> keyField(keys, e) }
 
@@ -188,7 +207,7 @@ class SettingsActivity : Activity() {
                 text = label; setTextColor(fg); textSize = 14.5f; this.id = View.generateViewId(); tag = id
                 buttonTintList = android.content.res.ColorStateList.valueOf(accent)
                 isChecked = prefs.theme == id
-                setPadding(0, 0, dpi(12), 0)
+                setPadding(0, 0, dpi(12), 0); minHeight = dpi(48); gravity = Gravity.CENTER_VERTICAL
             })
         }
         tg.setOnCheckedChangeListener { g, cid -> prefs.theme = g.findViewById<View>(cid).tag as String }
@@ -227,8 +246,16 @@ class SettingsActivity : Activity() {
         val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith(packageName) == true
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         step(box, "1. Enable Reev", enabled, "Enable") { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
+        if (!enabled) box.addView(text("Android will show one or two warnings (about collecting typed text, and about unlocking after a restart). " +
+            "They appear for any keyboard you install. Tap OK on each; pressing Back cancels.", 12.5f, sub)
+            .also { it.setPadding(0, 0, 0, dpi(6)) })
         step(box, "2. Switch to Reev", current, "Switch") { imm.showInputMethodPicker() }
         step(box, "3. Allow microphone", mic, "Allow") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2) }
+        // Same check the voice panel uses, so Setup and the keyboard never disagree.
+        val engineReady = Engines.create(this, prefs.engine).notReadyReason() == null
+        step(box, "4. Get a dictation engine", engineReady, "Get") { jumpToEngine() }
+        if (!engineReady) box.addView(text("Dictation needs the on-device model (a one-time download) or a cloud API key. Typing works without it.", 12.5f, sub)
+            .also { it.setPadding(0, 0, 0, dpi(6)) })
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -236,7 +263,7 @@ class SettingsActivity : Activity() {
     }
 
     private fun step(box: LinearLayout, label: String, done: Boolean, action: String, onClick: () -> Unit) {
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dpi(6), 0, dpi(6)) }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dpi(1), 0, dpi(1)); minimumHeight = dpi(50) }
         row.addView(text(label, 15f, fg), LinearLayout.LayoutParams(0, -2, 1f))
         if (done) row.addView(text("✓ Done", 14f, Color.parseColor("#5BD68A"), bold = true))
         else row.addView(button(action, onClick))
@@ -296,7 +323,7 @@ class SettingsActivity : Activity() {
 
     private fun toggle(parent: LinearLayout, label: String, v: Boolean, set: (Boolean) -> Unit) {
         parent.addView(Switch(this).apply {
-            text = label; isChecked = v; setTextColor(fg); textSize = 15f; setPadding(0, dpi(8), 0, dpi(8))
+            text = label; isChecked = v; setTextColor(fg); textSize = 15f; setPadding(0, dpi(8), 0, dpi(8)); minHeight = dpi(48); gravity = Gravity.CENTER_VERTICAL
             thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(accent, Color.GRAY))
             setOnCheckedChangeListener { _, c -> set(c) }
         })
@@ -320,11 +347,16 @@ class SettingsActivity : Activity() {
         text = s; textSize = 14.5f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; isClickable = true
     }
 
-    private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(10) }
+    /** Selected-segment pill, inset 3 dp top and bottom so the segment itself can be 48 dp tall. */
+    private fun segPill() = android.graphics.drawable.InsetDrawable(rounded(accent, 10), 0, dpi(3), 0, dpi(3))
+
+    private fun spaced() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(5) }
 
     private fun button(s: String, onClick: () -> Unit) = Button(this).apply {
         text = s; isAllCaps = false; setTextColor(Color.WHITE); textSize = 14f
-        background = rounded(accent, 20); setPadding(dpi(16), 0, dpi(16), 0); minHeight = dpi(38); minimumHeight = dpi(38)
+        // 48 dp touch target; the pill is still drawn 38 dp tall (5 dp transparent inset above and below).
+        background = android.graphics.drawable.InsetDrawable(rounded(accent, 20), 0, dpi(5), 0, dpi(5))
+        setPadding(dpi(16), 0, dpi(16), 0); minHeight = dpi(48); minimumHeight = dpi(48)
         stateListAnimator = null
         setOnClickListener { onClick() }
     }

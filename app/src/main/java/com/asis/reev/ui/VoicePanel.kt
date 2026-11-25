@@ -28,6 +28,8 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         fun onTalkStop()
         fun onTalkCancel()
         fun onEngineTap()
+        /** The hint is a call to action (dictation engine not ready) and was tapped. */
+        fun onHintTap() {}
         /** Long-press on the engine chip: cycle the dictation mode. */
         fun onModeTap()
         fun onDelete()
@@ -51,7 +53,15 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
     /** A problem to show instead of the usual prompt (engine not ready, mic error). Spoken to screen readers. */
     var hint: String? = null
-        set(v) { if (v != null) announceForAccessibility(v); field = v; invalidate(); a11y.invalidateRoot() }
+        set(v) { if (v != null) announceForAccessibility(v); field = v; hintTappable = false; invalidate(); a11y.invalidateRoot() }
+
+    /** True when [hint] is a call to action: drawn as a pill, a tap calls [Listener.onHintTap]. Any new [hint] resets it. */
+    var hintTappable = false
+        set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
+
+    private var hintFlashUntil = 0L
+    /** Lights the hint pill for a moment: the visible answer when the talk button can't start dictation. */
+    fun flashHint() { hintFlashUntil = System.currentTimeMillis() + 350; invalidate(); postInvalidateDelayed(360) }
 
     /** 0..1 microphone level, smoothed. */
     private var level = 0f
@@ -77,6 +87,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
     private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.keyPressed }
     private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.text; textSize = ctx.dp(13f); typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
     private val hintText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.subText; textSize = ctx.dp(12.5f); textAlign = Paint.Align.CENTER }
+    private val hintAction = Paint(hintText).apply { color = pal.text; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND; strokeWidth = ctx.dp(3f) }
     private val accentStroke = Icons.stroke(pal.accentText, ctx.dp(2f))
 
@@ -111,6 +122,13 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
     private fun delRect(): RectF { val e = enterRect(); return RectF(e.left - context.dp(8f) - context.dp(64f), ctlY, e.left - context.dp(8f), ctlY + ctlH) }
     private fun spaceRect(): RectF { val d = delRect(); return RectF(d.left - context.dp(8f) - context.dp(64f), ctlY, d.left - context.dp(8f), ctlY + ctlH) }
     private fun cancelCenter() = Pair(cx - btnR - context.dp(56f), cy)
+    private val hintY get() = cy + btnR + context.dp(30f)
+    private fun hintLabel() = hint.orEmpty() + "  ›"
+    /** Touch area of the tappable hint: the 48 dp between the talk button and the bottom controls. */
+    private fun hintRect(): RectF {
+        val w = minOf(hintAction.measureText(hintLabel()) + context.dp(28f), width - context.dp(16f))
+        return RectF(cx - w / 2, hintY - context.dp(30f), cx + w / 2, hintY + context.dp(18f))
+    }
 
     override fun onDraw(c: Canvas) {
         c.drawColor(pal.bg)
@@ -170,7 +188,14 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             State.INSERTED -> if (insertedIn.isNotEmpty()) "Inserted in $insertedIn" else "Inserted"
             State.ERROR -> hint ?: "Didn't catch that"
         }
-        c.drawText(h, cx, cy + btnR + context.dp(30f), hintText)
+        if (hintTappable && hint != null) {
+            val hr = hintRect()
+            val pill = RectF(hr.left, hintY - context.dp(20f), hr.right, hintY + context.dp(11f))
+            val flash = System.currentTimeMillis() < hintFlashUntil
+            c.drawRoundRect(pill, pill.height() / 2, pill.height() / 2, if (flash) accent else if (pressed == 7) pressPaint else chip)
+            hintAction.color = if (flash) pal.accentText else pal.text
+            c.drawText(hintLabel(), cx, hintY, hintAction)
+        } else c.drawText(h, cx, hintY, hintText)
 
         // controls
         val cr = chipRect()
@@ -211,7 +236,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             val (x, y) = cancelCenter(); val cr = context.dp(26f)
             out += A11yItem(6, "Cancel dictation", RectF(x - cr, y - cr, x + cr, y + cr))
         }
-        hint?.let { out += A11yItem(7, it, RectF(0f, cy + r, width.toFloat(), ctlY - context.dp(4f)), clickable = false) }
+        hint?.let { out += A11yItem(7, if (hintTappable) "$it. Opens Reev settings" else it, RectF(0f, cy + r, width.toFloat(), ctlY - context.dp(4f)), clickable = hintTappable) }
         out += A11yItem(1, "Speech engine, $engineLabel", chipRect())
         out += A11yItem(4, "Space", spaceRect())
         out += A11yItem(2, "Delete", delRect())
@@ -234,13 +259,14 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             3 -> { buzz(); listener?.onEnter() }
             4 -> { buzz(); listener?.onSpace() }
             6 -> { buzz(); listener?.onTalkCancel() }
+            7 -> { buzz(); listener?.onHintTap() }
         }
     }
 
     override fun dispatchHoverEvent(event: MotionEvent): Boolean = a11y.dispatchHoverEvent(event) || super.dispatchHoverEvent(event)
 
     // --- touch ---
-    private var pressed = 0 // 0 none, 1 chip, 2 del, 3 enter, 4 space, 5 button, 6 cancel
+    private var pressed = 0 // 0 none, 1 chip, 2 del, 3 enter, 4 space, 5 button, 6 cancel, 7 hint
     private var downAt = 0L
     private var longPressFired = false
     private val longPress = Runnable { if (pressed == 1) { longPressFired = true; buzz(); listener?.onModeTap() } }
@@ -258,6 +284,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             val (ccx, ccy) = cancelCenter()
             if (hypot(x - ccx, y - ccy) < context.dp(30f)) return 6
         }
+        if (hintTappable && hint != null && hintRect().contains(x, y)) return 7
         if (hypot(x - cx, y - cy) < btnR + context.dp(28f)) return 5
         return 0
     }
@@ -296,6 +323,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
                     3 -> if (z == 3) listener?.onEnter()
                     4 -> if (z == 4) listener?.onSpace()
                     6 -> if (z == 6) listener?.onTalkCancel()
+                    7 -> if (z == 7) listener?.onHintTap()
                 }
                 handler.removeCallbacks(delRepeat); handler.removeCallbacks(longPress)
                 longPressFired = false

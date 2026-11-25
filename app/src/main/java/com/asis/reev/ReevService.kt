@@ -242,6 +242,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         voice.engineLabel = prefs.engine.short
         val reason = Engines.create(this, prefs.engine).notReadyReason()
         voice.hint = reason
+        voice.hintTappable = reason != null          // tap the hint to open Reev settings
         if (reason == null && !prefs.autoStartVoice) say("Voice typing")
         Engines.warm(this, prefs.engine)
         if (reason == null && prefs.autoStartVoice) { onTalkStart(); voice.state = VoicePanel.State.LATCHED }
@@ -289,7 +290,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         val w = wordBeforeCursor()
         val gw = glideWord
         if (gw != null && glideAlts.isNotEmpty() && w == gw) { topBar.suggestions = glideAlts; return }
-        if (w.any { it.isDigit() }) { topBar.suggestions = emptyList(); return }
+        // Digits, or a lone accented letter the English dictionary can only echo back: nothing useful to suggest.
+        if (w.any { it.isDigit() } || (w.length == 1 && w[0].code > 0x7F)) { topBar.suggestions = emptyList(); return }
         val prev = prevWord(w.length).first
         topBar.suggestions = if (w.isNotEmpty()) suggest.suggest(w, prev) else {
             // next-word prediction right after a space
@@ -323,6 +325,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (keyboard.shift == ShiftState.ON && keyboard.mode == KbMode.LETTERS) keyboard.shift = ShiftState.OFF
         // after typing a symbol like ' or digits, return to letters on space; Gboard-like
         updateShift()
+        if (text.any { it.code > 0x7F }) updateSuggestions()   // accent/symbol commit: don't wait for the editor's selection update
     }
 
     private fun onSpaceKey() {
@@ -506,7 +509,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             return
         }
         showVoice()
-        if (!prefs.practiced) voice.hint = "Hold the mic and say a sentence"
+        if (!prefs.practiced && voice.hint == null) voice.hint = "Hold the mic and say a sentence"
     }
 
     /** Ask in the keyboard before the system dialog, so the first request is a decision. */
@@ -540,7 +543,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (sensitive) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             showVoice()
-            if (!prefs.practiced) voice.hint = "Hold the mic and say a sentence"
+            if (!prefs.practiced && voice.hint == null) voice.hint = "Hold the mic and say a sentence"
         } else {
             showRationale()
         }
@@ -617,7 +620,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     override fun onTalkStart() {
         if (session != null) return
         val engine = Engines.create(this, prefs.engine)
-        engine.notReadyReason()?.let { voice.hint = it; voice.state = VoicePanel.State.IDLE; return }
+        engine.notReadyReason()?.let { notReady(it); return }
         voice.hint = null; voice.insertedIn = ""
         val id = ++sessionId
         val info = currentInputEditorInfo
@@ -818,7 +821,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             if (Engines.create(this, cand).notReadyReason() == null) { next = cand; break }
         }
         if (next == cur) {
-            voice.hint = "Add API keys / download the model in Reev settings"
+            voice.hint = "Add API keys / download the model in Reev settings"; voice.hintTappable = true
         } else {
             prefs.engine = next
             voice.engineLabel = next.short
@@ -826,6 +829,19 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             voice.hint = null
             Engines.warm(this, next)
         }
+    }
+
+    /** Engine not ready: say why in a tappable hint and flash it, so holding and tapping the talk button both get an answer. */
+    private fun notReady(reason: String) {
+        voice.hint = reason; voice.hintTappable = true; voice.flashHint()
+        voice.state = VoicePanel.State.IDLE
+    }
+
+    override fun onHintTap() {
+        // CLEAR_TOP so the extra reaches the activity even if Settings is already open in its task.
+        startActivity(Intent(this, SettingsActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(SettingsActivity.EXTRA_JUMP_ENGINE, true))
     }
 
     override fun onDestroy() {

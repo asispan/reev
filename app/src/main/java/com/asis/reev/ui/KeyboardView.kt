@@ -20,6 +20,20 @@ import kotlin.math.ln
 enum class KbMode { LETTERS, SYMBOLS, MORE }
 enum class ShiftState { OFF, ON, LOCKED }
 
+/**
+ * Height of one key row in px. [full] (54 dp) in portrait. In landscape the four rows plus 64 dp of fixed
+ * chrome (48 top bar + 12 padding + 4 gap) aim for half the screen, so the navigation-bar inset on top
+ * still leaves the keyboard at or under about 55 %. Never below 32 dp, never above [full] (tablets unchanged).
+ */
+internal fun keyRowHeightPx(full: Float, landscape: Boolean, screenH: Float, density: Float): Float =
+    if (!landscape) full else ((screenH * 0.5f - 64f * density) / 4f).coerceIn(minOf(32f * density, full), full)
+
+internal fun Context.keyRowHeight(): Float {
+    val dm = resources.displayMetrics
+    val land = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    return keyRowHeightPx(dp(54f), land, dm.heightPixels.toFloat(), dm.density)
+}
+
 class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
 
     interface Listener {
@@ -69,7 +83,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
 
     private var rows: List<List<Key>> = Layouts.letters(false)
-    private val rowH = ctx.dp(54f)
+    private val rowH = ctx.keyRowHeight()
     private val padV = ctx.dp(6f)
     private val gapH = ctx.dp(5f)
     private val gapV = ctx.dp(7f)
@@ -93,6 +107,10 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         var deleteSwipe = false
         var gliding = false
         var switchLongPressed = false
+        /** Long-press popup: the items shown, the finger x when it opened, and whether the finger has slid since. */
+        var popupItems: List<String> = emptyList()
+        var popupX = 0f
+        var popupMoved = false
         var n = 0
         var xs = FloatArray(256); var ys = FloatArray(256)
         fun add(x: Float, y: Float) {
@@ -327,6 +345,7 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         if (k.type == KeyType.CHAR && k.popup.isNotEmpty()) {
             t.longPressed = true
             val items = if (mode == KbMode.LETTERS && shift != ShiftState.OFF) k.popup.map { it.uppercase() } else k.popup
+            t.popupItems = items; t.popupX = if (t.n > 0) t.xs[t.n - 1] else t.x0
             overlay?.showPopup(overlayRect(k), items, (k.r - k.l).coerceAtLeast(context.dp(36f)))
             if (hapticsOn) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         }
@@ -377,7 +396,9 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
         val k = t.key
         if (commit) {
             if (t.longPressed) {
-                overlay?.popupValue()?.let { listener?.onKeyText(it) }
+                // No slide after the popup opened: commit the first item (highlighted on open), not the cell above the finger.
+                val v = if (t.popupMoved) overlay?.popupValue() else t.popupItems.firstOrNull()
+                v?.let { listener?.onKeyText(it) }
             } else if (t.gliding) {
                 listener?.onGlide(t.xs, t.ys, t.n)
             } else if (!t.spaceDrag && !t.deleteSwipe && !t.switchLongPressed) commitKey(k)
@@ -404,7 +425,12 @@ class KeyboardView(ctx: Context, private val pal: Palette) : View(ctx) {
                 val t = active ?: return true
                 val i = e.findPointerIndex(t.id); if (i < 0) return true
                 val x = e.getX(i); val y = e.getY(i)
-                if (t.longPressed) { overlay?.movePopup(overlayX(x)); return true }
+                if (t.longPressed) {
+                    // Until the finger really slides, the default (first) item stays chosen.
+                    if (!t.popupMoved && abs(x - t.popupX) > context.dp(8f)) t.popupMoved = true
+                    if (t.popupMoved) overlay?.movePopup(overlayX(x))
+                    return true
+                }
                 when (t.key.type) {
                     KeyType.SPACE -> {
                         val step = context.dp(14f)

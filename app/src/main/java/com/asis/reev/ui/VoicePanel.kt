@@ -208,7 +208,8 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         // controls
         val cr = chipRect()
         c.drawRoundRect(cr, ctlH / 2, ctlH / 2, if (pressed == 1) pressPaint else chip)
-        c.drawCircle(cr.left + context.dp(16f), cr.centerY(), context.dp(4f), accent)
+        // Status dot: accent when the engine is ready, grey when it still needs setting up.
+        c.drawCircle(cr.left + context.dp(16f), cr.centerY(), context.dp(4f), if (talkEnabled) accent else hintText)
         val fm = chipText.fontMetrics
         c.drawText(engineLabel, cr.left + context.dp(28f), cr.centerY() - (fm.ascent + fm.descent) / 2, chipText)
         Icons.chevronDown(c, cr.right - context.dp(14f), cr.centerY(), context.dp(18f), stroke)
@@ -245,7 +246,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
             out += A11yItem(6, "Cancel dictation", RectF(x - cr, y - cr, x + cr, y + cr))
         }
         hint?.let { out += A11yItem(7, if (hintTappable) "$it. Opens Reev settings" else it, RectF(0f, cy + r, width.toFloat(), ctlY - context.dp(4f)), clickable = hintTappable) }
-        out += A11yItem(1, "Speech engine, $engineLabel", chipRect())
+        out += A11yItem(1, "Speech engine, $engineLabel" + if (talkEnabled) "" else ", not set up", chipRect())
         out += A11yItem(4, "Space", spaceRect())
         out += A11yItem(2, "Delete", delRect())
         out += A11yItem(3, "Enter", enterRect())

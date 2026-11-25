@@ -139,8 +139,9 @@ class SettingsActivity : Activity() {
         val segCloud = segment("API keys (cloud)")
         val seg = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; background = rounded(Color.parseColor("#26282E"), 12)
-            setPadding(dpi(3), 0, dpi(3), 0)
-            addView(segLocal, LinearLayout.LayoutParams(0, dpi(48), 1f)); addView(segCloud, LinearLayout.LayoutParams(0, dpi(48), 1f))
+            setPadding(dpi(3), 0, dpi(3), 0); isBaselineAligned = false
+            // The row wraps its content; MATCH_PARENT children all take the height of the tallest one, so the pill fills it.
+            addView(segLocal, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)); addView(segCloud, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
         }
         val providers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dpi(10), 0, 0) }
         providers.addView(text("Provider", 13.5f, fg, bold = true))
@@ -161,6 +162,8 @@ class SettingsActivity : Activity() {
             val local = prefs.engine == Engine.LOCAL
             segLocal.background = if (local) segPill() else null
             segCloud.background = if (local) null else segPill()
+            // Setting an InsetDrawable background replaces the view's padding with its insets: set ours afterwards.
+            segLocal.setPadding(dpi(6), dpi(8), dpi(6), dpi(8)); segCloud.setPadding(dpi(6), dpi(8), dpi(6), dpi(8))
             segLocal.setTextColor(if (local) Color.WHITE else sub); segCloud.setTextColor(if (local) sub else Color.WHITE)
             providers.visibility = if (local) View.GONE else View.VISIBLE
             segLocal.isSelected = local; segCloud.isSelected = !local   // announced by screen readers
@@ -210,7 +213,8 @@ class SettingsActivity : Activity() {
 
         // ---- typing
         val typ = section("Keyboard")
-        typ.addView(text("Theme", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(4), 0, dpi(2)) })
+        typ.addView(text("Keyboard theme", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(4), 0, dpi(2)) })
+        typ.addView(text("Changes the keyboard only. Reev's own screens stay dark.", 12.5f, sub))
         // Three labels in one row don't fit at large font or on narrow screens: stack them.
         val tg = RadioGroup(this).apply {
             orientation = if (resources.configuration.fontScale >= 1.3f || resources.configuration.screenWidthDp < 380) RadioGroup.VERTICAL else RadioGroup.HORIZONTAL
@@ -259,7 +263,8 @@ class SettingsActivity : Activity() {
         val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith(packageName) == true
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         step(box, "1. Enable Reev", enabled, "Enable") { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
-        if (!enabled) box.addView(text("Android will show one or two warnings (about collecting typed text, and about unlocking after a restart). " +
+        // Always shown, worded for before and after: removing it once enabled moved "Switch" up under the finger.
+        box.addView(text("Android shows one or two warnings when you enable a keyboard (about collecting typed text, and about unlocking after a restart). " +
             "They appear for any keyboard you install. Tap OK on each; pressing Back cancels.", 12.5f, sub)
             .also { it.setPadding(0, 0, 0, dpi(6)) })
         step(box, "2. Switch to Reev", current, "Switch") { imm.showInputMethodPicker() }
@@ -282,7 +287,7 @@ class SettingsActivity : Activity() {
 
     private fun step(box: LinearLayout, label: String, done: Boolean, action: String, doneLabel: String = "✓ Done", onClick: () -> Unit) {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dpi(1), 0, dpi(1)); minimumHeight = dpi(50) }
-        row.addView(text(label, 15f, fg), LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(text(label, 15f, fg), LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dpi(12) })
         if (done) row.addView(text(doneLabel, 14f, Color.parseColor("#5BD68A"), bold = true))
         else row.addView(button(action, onClick))
         box.addView(row)
@@ -324,8 +329,11 @@ class SettingsActivity : Activity() {
     private fun keyField(parent: LinearLayout, e: Engine) {
         parent.addView(text(e.title, 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
         val et = EditText(this).apply {
-            setText(prefs.apiKey(e)); hint = "API key"; setTextColor(fg); setHintTextColor(sub); textSize = 14f; minHeight = dpi(48)
+            setText(prefs.apiKey(e)); hint = "API key"; setTextColor(fg); setHintTextColor(sub); textSize = 14f
             isSingleLine = true
+            // After isSingleLine: setSingleLine() calls setLines(1), which overwrites TextView.minHeight.
+            // View.minimumHeight is separate and survives it.
+            minHeight = dpi(48); minimumHeight = dpi(48)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
             background = rounded(Color.parseColor("#26282E"), 10)
@@ -342,6 +350,7 @@ class SettingsActivity : Activity() {
     private fun toggle(parent: LinearLayout, label: String, v: Boolean, set: (Boolean) -> Unit) {
         parent.addView(Switch(this).apply {
             text = label; isChecked = v; setTextColor(fg); textSize = 15f; setPadding(0, dpi(8), 0, dpi(8)); minHeight = dpi(48); gravity = Gravity.CENTER_VERTICAL
+            switchPadding = dpi(16)   // gap between the label and the switch, on whichever side the switch is
             thumbTintList = android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(accent, Color.GRAY))
             setOnCheckedChangeListener { _, c -> set(c) }
         })
@@ -363,6 +372,7 @@ class SettingsActivity : Activity() {
 
     private fun segment(s: String) = TextView(this).apply {
         text = s; textSize = 14.5f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; isClickable = true
+        minHeight = dpi(48)   // grows past 48 dp when the label wraps; padding is set in showMode()
     }
 
     /** Selected-segment pill, inset 3 dp top and bottom so the segment itself can be 48 dp tall. */
@@ -472,7 +482,7 @@ class SettingsActivity : Activity() {
 
     private fun field(value: String, hint: String, secret: Boolean, onChange: (String) -> Unit): EditText {
         val et = EditText(this).apply {
-            setText(value); this.hint = hint; setTextColor(fg); setHintTextColor(sub); textSize = 14f; isSingleLine = true; minHeight = dpi(48)
+            setText(value); this.hint = hint; setTextColor(fg); setHintTextColor(sub); textSize = 14f; isSingleLine = true; minHeight = dpi(48); minimumHeight = dpi(48)
             background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(10), dpi(12), dpi(10))
             if (secret) {
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD

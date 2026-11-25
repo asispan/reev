@@ -241,7 +241,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         voice.state = VoicePanel.State.IDLE
         voice.engineLabel = prefs.engine.short
         val reason = Engines.create(this, prefs.engine).notReadyReason()
-        voice.hint = reason
+        voice.hint = reason?.let { setupPill() }
         voice.hintTappable = reason != null          // tap the hint to open Reev settings
         voice.talkEnabled = reason == null
         if (reason != null) topBar.status = "Dictation isn't set up yet"
@@ -823,7 +823,10 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
             if (Engines.create(this, cand).notReadyReason() == null) { next = cand; break }
         }
         if (next == cur) {
-            voice.hint = "Add API keys / download the model in Reev settings"; voice.hintTappable = true
+            // No engine ready at all: keep the setup pill (and its highlight) that the status line points at.
+            val alert = voice.hintAlert
+            voice.hint = if (voice.talkEnabled) "Add API keys / download the model in Reev settings" else setupPill()
+            voice.hintTappable = true; voice.hintAlert = alert
         } else {
             prefs.engine = next
             voice.engineLabel = next.short
@@ -839,12 +842,23 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
      * the talk button is dimmed and the status line says what to do. Also spoken for screen readers.
      */
     private fun notReady(reason: String) {
-        if (voice.hint != reason) voice.hint = reason      // the setter announces; don't repeat it on every press
+        val pill = setupPill()
+        if (voice.hint != pill) voice.hint = pill      // the setter announces; don't repeat it on every press
         voice.hintTappable = true; voice.hintAlert = true; voice.talkEnabled = false
         voice.state = VoicePanel.State.IDLE
         topBar.transcript = ""; topBar.transcriptPending = false
-        topBar.status = "No dictation engine yet — tap the pill below"
-        say("No dictation engine yet. $reason. Activate the hint to open Reev settings")
+        topBar.status = "Dictation is off — tap “${setupAction()}” below"
+        say("Dictation is off. $reason. Activate ${setupAction()} to open Reev settings")
+    }
+
+    /** What the setup pill does, in the words the status line repeats. */
+    private fun setupAction() = if (prefs.engine == Engine.LOCAL) "Set up dictation" else "Add an API key"
+
+    /** Pill label: the action plus its cost (download size, computed as in SettingsActivity). VoicePanel appends the "›". */
+    private fun setupPill(): String {
+        if (prefs.engine != Engine.LOCAL) return setupAction()
+        val mb = com.asis.reev.stt.LocalModel.from(prefs.localModel).files.sumOf { it.size } / 1_000_000
+        return "${setupAction()} · $mb MB download"
     }
 
     override fun onHintTap() {

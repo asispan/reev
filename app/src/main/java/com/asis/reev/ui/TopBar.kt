@@ -64,6 +64,7 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
             if (s != null) out += A11yItem(i, "Suggestion, $s", RectF(iconW + i * cell, 0f, iconW + (i + 1) * cell, hh))
         }
         if (micEnabled) out += A11yItem(Z_MIC, "Voice typing", RectF(w - iconW, 0f, w, hh))
+        else out += A11yItem(Z_MIC, "Voice typing is off in password and private fields", RectF(w - iconW, 0f, w, hh), clickable = false)
         return out
     }
 
@@ -116,6 +117,11 @@ class TopBar(ctx: Context, private val pal: Palette) : View(ctx) {
         if (micEnabled) {
             c.drawCircle(mx, cy, h * 0.36f, accentFill)
             Icons.mic(c, mx, cy, h * 0.52f, micFill, accentStroke)
+        } else if (suggestions.isEmpty()) {
+            // Password / PIN / incognito field: say why the mic is gone.
+            val note = "Mic off in private fields"
+            val fm = sPaint.fontMetrics
+            c.drawText(note, (width - sPaint.measureText(note)) / 2, cy - (fm.ascent + fm.descent) / 2, sPaint)
         }
         // suggestions
         val l = iconW; val r = width - iconW

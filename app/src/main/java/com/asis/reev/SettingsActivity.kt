@@ -96,8 +96,21 @@ class SettingsActivity : Activity() {
         sv.post { sv.smoothScrollTo(0, (target.top - dpi(48)).coerceAtLeast(0)) }
     }
 
+    /** Scrolls the focused field into the part of the page that the keyboard ([bottomInset]) leaves visible. */
+    private fun revealFocused(sv: ScrollView, bottomInset: Int) {
+        val f = sv.findFocus() ?: return
+        if (f === sv) return
+        val r = android.graphics.Rect(0, 0, f.width, f.height)
+        sv.offsetDescendantRectToMyCoords(f, r)
+        val top = sv.scrollY + sv.paddingTop
+        val bottom = sv.scrollY + sv.height - bottomInset
+        val dy = if (r.bottom > bottom) r.bottom - bottom else if (r.top < top) r.top - top else 0
+        if (dy != 0) sv.scrollBy(0, dy)
+    }
+
     private fun render() {
-        val scroll = ScrollView(this).also { scroller = it }
+        // Reev's screens are English-only: keep them left-to-right under RTL locales instead of half-mirroring.
+        val scroll = ScrollView(this).also { scroller = it; it.layoutDirection = View.LAYOUT_DIRECTION_LTR; it.textDirection = View.TEXT_DIRECTION_LTR }
         col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dpi(18), dpi(28), dpi(18), dpi(40)) }
         scroll.addView(col)
         setContentView(scroll)
@@ -108,10 +121,13 @@ class SettingsActivity : Activity() {
                     insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime()).bottom
             } else @Suppress("DEPRECATION") (insets.systemWindowInsetTop to insets.systemWindowInsetBottom)
             v.setPadding(0, top, 0, 0)
-            // Bottom inset as a margin, not padding: the ScrollView really shrinks when the keyboard opens,
-            // and its own onSizeChanged then scrolls the focused field into view.
-            (v.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
-                if (lp.bottomMargin != bottom) { lp.bottomMargin = bottom; v.layoutParams = lp }
+            // Bottom inset as extra padding on the content, not a margin on the ScrollView: the ScrollView always
+            // fills the window, so a late or stale keyboard inset after a rotation can only add scroll room, never
+            // cut the page short. Its size no longer changes with the keyboard, so reveal the focused field by hand.
+            val content = scroll.getChildAt(0)
+            if (content != null && content.paddingBottom != dpi(40) + bottom) {
+                content.setPadding(content.paddingLeft, content.paddingTop, content.paddingRight, dpi(40) + bottom)
+                v.post { revealFocused(scroll, bottom) }
             }
             insets
         }
@@ -264,8 +280,7 @@ class SettingsActivity : Activity() {
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         step(box, "1. Enable Reev", enabled, "Enable") { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
         // Always shown, worded for before and after: removing it once enabled moved "Switch" up under the finger.
-        box.addView(text("Android shows one or two warnings when you enable a keyboard (about collecting typed text, and about unlocking after a restart). " +
-            "They appear for any keyboard you install. Tap OK on each; pressing Back cancels.", 12.5f, sub)
+        box.addView(text("Android shows up to two warnings for any keyboard: tap OK on each (Back cancels).", 12.5f, sub)
             .also { it.setPadding(0, 0, 0, dpi(6)) })
         step(box, "2. Switch to Reev", current, "Switch") { imm.showInputMethodPicker() }
         step(box, "3. Allow microphone", mic, "Allow", "✓ Allowed") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2) }
@@ -304,7 +319,7 @@ class SettingsActivity : Activity() {
                 prefs.localModel = m.id; LocalParakeet.release(); render()
             }
         }
-        top.addView(rb, LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(rb, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dpi(12) })
         val installed = ModelManager.isInstalled(this, m)
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE; progressTintList = android.content.res.ColorStateList.valueOf(accent)

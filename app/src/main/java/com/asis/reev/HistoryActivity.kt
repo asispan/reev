@@ -47,7 +47,8 @@ class HistoryActivity : Activity() {
     }
 
     private fun render() {
-        val scroll = ScrollView(this)
+        // English-only screen: keep it left-to-right under RTL locales.
+        val scroll = ScrollView(this).apply { layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR }
         col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpi(18), dpi(28), dpi(18), dpi(40))
@@ -55,6 +56,11 @@ class HistoryActivity : Activity() {
         scroll.addView(col)
         setContentView(scroll)
 
+        col.addView(text("‹ Back", 15f, fg).apply {
+            gravity = Gravity.CENTER_VERTICAL; minHeight = dpi(48); minimumHeight = dpi(48); setPadding(0, 0, dpi(16), 0)
+            isFocusable = true; contentDescription = "Back"
+            setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         col.addView(text("History", 30f, fg, bold = true))
         col.addView(text("Dictations from every app, newest first. Tap a row to see the original and the delivered text.", 13.5f, sub)
             .also { it.setPadding(0, dpi(4), 0, dpi(14)) })

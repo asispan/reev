@@ -98,7 +98,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
 
     private var builtPalette: Palette? = null
     private val themeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "hinglish") suggest.setHinglish(prefs.hinglish)
+        if (key == "hinglish") { applyHinglish(); if (root != null) updateSuggestions() }
         if (key == "theme" && root != null) main.post { if (Palette.of(this) != builtPalette) setInputView(onCreateInputView()) }
     }
 
@@ -147,6 +147,15 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         keyboard.hapticsOn = h; topBar.hapticsOn = h; voice.hapticsOn = h; emoji?.hapticsOn = h
         keyboard.glideEnabled = prefs.glideTyping
         voice.engineLabel = prefs.engine.short
+        applyHinglish()
+    }
+
+    /** Hinglish toggle. Also run on every keyboard show, so it never rests on the pref callback alone. */
+    private var hinglishApplied = true
+    private fun applyHinglish() {
+        val on = prefs.hinglish
+        suggest.setHinglish(on)
+        if (on != hinglishApplied) { hinglishApplied = on; glideDecoder = null }   // the decoder caches the glide vocabulary
     }
 
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
@@ -244,7 +253,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         voice.hint = reason?.let { setupPill() }
         voice.hintTappable = reason != null          // tap the hint to open Reev settings
         voice.talkEnabled = reason == null
-        if (reason != null) topBar.status = "Dictation isn't set up yet"
+        if (reason != null) topBar.status = offStatus()
         if (reason == null && !prefs.autoStartVoice) say("Voice typing")
         Engines.warm(this, prefs.engine)
         if (reason == null && prefs.autoStartVoice) { onTalkStart(); voice.state = VoicePanel.State.LATCHED }
@@ -847,9 +856,12 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         voice.hintTappable = true; voice.hintAlert = true; voice.talkEnabled = false
         voice.state = VoicePanel.State.IDLE
         topBar.transcript = ""; topBar.transcriptPending = false
-        topBar.status = "Dictation is off — tap “${setupAction()}” below"
+        topBar.status = offStatus()
         say("Dictation is off. $reason. Activate ${setupAction()} to open Reev settings")
     }
+
+    /** Status line while no engine is ready: the same before and after a press on the talk button. */
+    private fun offStatus() = "Dictation is off — tap “${setupAction()}” below"
 
     /** What the setup pill does, in the words the status line repeats. */
     private fun setupAction() = if (prefs.engine == Engine.LOCAL) "Set up dictation" else "Add an API key"
@@ -858,7 +870,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
     private fun setupPill(): String {
         if (prefs.engine != Engine.LOCAL) return setupAction()
         val mb = com.asis.reev.stt.LocalModel.from(prefs.localModel).files.sumOf { it.size } / 1_000_000
-        return "${setupAction()} · $mb MB download"
+        return "${setupAction()} · $mb MB, Wi-Fi"
     }
 
     override fun onHintTap() {

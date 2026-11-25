@@ -17,6 +17,14 @@ class Lexicon(
 ) {
     data class Contraction(val form: String, val count: Long, val plainCount: Long, val ambiguous: Boolean)
 
+    companion object {
+        /** Tagged "eh" in words.tsv but not English words: hidden with Hinglish off. Ambiguous ones (main, hi, hum, log, par, ab, bas, na, ya, ho, pe, beta, papa, dil) stay English. */
+        private val HINGLISH_DUAL = setOf(
+            "hai", "toh", "kya", "ki", "ka", "ke", "se", "mein", "ek", "ko", "yeh", "kar", "karna", "yaar", "hoon",
+            "jab", "agar", "tha", "thi", "koi", "tum", "gaya", "mere", "abhi", "bhai", "dost", "bada",
+        )
+    }
+
     private val wordById: Array<String>
     private val ids = HashMap<String, Int>(90000)
     private val uni: LongArray
@@ -46,7 +54,10 @@ class Lexicon(
             val p = line.split('\t'); if (p.size < 2) return@forEachLine
             ws += p[0]; fs += p[1].toLongOrNull() ?: 1L
             val t = p.getOrElse(2) { "e" }
-            ts += ((if ('e' in t) 1 else 0) or (if ('h' in t) 2 else 0)).toByte()
+            // Some very common romanised-Hindi words also occur in the English subtitle corpus and are tagged "eh".
+            // Treat them as Hinglish-only so the toggle hides them; words that are also real English stay English.
+            val english = 'e' in t && p[0] !in HINGLISH_DUAL
+            ts += ((if (english) 1 else 0) or (if ('h' in t) 2 else 0)).toByte()
         }
         wordById = ws.toTypedArray()
         uni = LongArray(ws.size) { fs[it] }
@@ -90,6 +101,13 @@ class Lexicon(
         val n = norm(w)
         val id = ids[n]
         return (id != null && allowed(id)) || learned.containsKey(n)
+    }
+
+    /** May be offered as a suggestion or correction. Like [isKnown], but learning a word never brings back a
+     *  dictionary word the Hinglish toggle hides. [w] is already normalised. */
+    private fun offerable(w: String): Boolean {
+        val id = ids[w]
+        return if (id != null) allowed(id) else learned.containsKey(w)
     }
 
     /** In the built-in dictionary (not just learned). */
@@ -145,7 +163,7 @@ class Lexicon(
         var i = a
         val pre = ArrayList<String>()
         while (i < b && pre.size < 4000) { val id = sortedIds[i]; if (allowed(id)) pre += sorted[i]; i++ }
-        learned.keys.filter { it.startsWith(low) }.forEach { pre += it }
+        learned.keys.filter { it.startsWith(low) && offerable(it) }.forEach { pre += it }
         pre.sortedByDescending { logP(p, it) }.take(4).forEach { cands += it }
         // apostrophe forms of what was typed: well -> we'll, its -> it's
         val cons = contractions[low.replace("'", "")].orEmpty()
@@ -153,7 +171,7 @@ class Lexicon(
         // corrections for unknown words
         val known = isKnown(low)
         if (!known && low.length >= 2) {
-            edits1W(low).filter { isKnown(it.key) }.entries
+            edits1W(low).filter { offerable(it.key) }.entries
                 .sortedByDescending { logP(p, it.key) + ln(it.value) }.take(2).forEach { cands += it.key }
         }
         val ranked = cands.toMutableList()
@@ -258,7 +276,7 @@ class Lexicon(
             if (w.length >= 2 && allowed(id) && w.all { it in 'a'..'z' }) out += w to uni[id]
         }
         val have = out.mapTo(HashSet()) { it.first }
-        learned.forEach { (w, n) -> if (w !in have && w.length >= 2 && w.all { it in 'a'..'z' }) out += w to n * 5_000L }
+        learned.forEach { (w, n) -> if (w !in have && w.length >= 2 && offerable(w) && w.all { it in 'a'..'z' }) out += w to n * 5_000L }
         return out
     }
 
@@ -289,6 +307,6 @@ class Lexicon(
     }
 
     private fun bestEdit(low: String, prev: String?): String? =
-        edits1W(low).filter { it.value >= 0.6 && isKnown(it.key) }
+        edits1W(low).filter { it.value >= 0.6 && offerable(it.key) }
             .maxByOrNull { logP(prev, it.key) + ln(it.value) }?.key
 }

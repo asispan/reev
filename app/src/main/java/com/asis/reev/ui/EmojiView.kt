@@ -164,6 +164,7 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
     private inner class BottomRow : View(context) {
         private val key = Paint(Paint.ANTI_ALIAS_FLAG)
         private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.text; textSize = context.dp(15f); textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
+        private val spaceTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.subText; textAlign = Paint.Align.CENTER; textSize = context.dp(12f) }
         private val stroke = Icons.stroke(pal.text, context.dp(1.8f))
         private var pressed = -1
         private val h = Handler(Looper.getMainLooper())
@@ -190,6 +191,9 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
             }
             val fm = txt.fontMetrics
             c.drawText("ABC", r[0].centerX(), r[0].centerY() - (fm.ascent + fm.descent) / 2, txt)
+            // Same muted "Reev" label as the letter keyboard's space bar.
+            val sfm = spaceTxt.fontMetrics
+            c.drawText("Reev", r[1].centerX(), r[1].centerY() - (sfm.ascent + sfm.descent) / 2, spaceTxt)
             Icons.backspace(c, r[2].centerX(), r[2].centerY(), r[2].height() * 0.42f, stroke)
         }
         @SuppressLint("ClickableViewAccessibility")

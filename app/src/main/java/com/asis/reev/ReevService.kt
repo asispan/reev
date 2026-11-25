@@ -243,6 +243,8 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         val reason = Engines.create(this, prefs.engine).notReadyReason()
         voice.hint = reason
         voice.hintTappable = reason != null          // tap the hint to open Reev settings
+        voice.talkEnabled = reason == null
+        if (reason != null) topBar.status = "Dictation isn't set up yet"
         if (reason == null && !prefs.autoStartVoice) say("Voice typing")
         Engines.warm(this, prefs.engine)
         if (reason == null && prefs.autoStartVoice) { onTalkStart(); voice.state = VoicePanel.State.LATCHED }
@@ -621,7 +623,7 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         if (session != null) return
         val engine = Engines.create(this, prefs.engine)
         engine.notReadyReason()?.let { notReady(it); return }
-        voice.hint = null; voice.insertedIn = ""
+        voice.hint = null; voice.insertedIn = ""; voice.talkEnabled = true
         val id = ++sessionId
         val info = currentInputEditorInfo
         sessionPkg = info?.packageName ?: ""
@@ -825,16 +827,24 @@ class ReevService : InputMethodService(), KeyboardView.Listener, TopBar.Listener
         } else {
             prefs.engine = next
             voice.engineLabel = next.short
+            if (!voice.talkEnabled) { voice.talkEnabled = true; topBar.transcript = ""; topBar.status = "Hold the mic and speak" }
             say("Speech engine, ${next.short}")
             voice.hint = null
             Engines.warm(this, next)
         }
     }
 
-    /** Engine not ready: say why in a tappable hint and flash it, so holding and tapping the talk button both get an answer. */
+    /**
+     * Engine not ready: nothing is recorded. The answer stays on screen: the hint pill stays highlighted,
+     * the talk button is dimmed and the status line says what to do. Also spoken for screen readers.
+     */
     private fun notReady(reason: String) {
-        voice.hint = reason; voice.hintTappable = true; voice.flashHint()
+        if (voice.hint != reason) voice.hint = reason      // the setter announces; don't repeat it on every press
+        voice.hintTappable = true; voice.hintAlert = true; voice.talkEnabled = false
         voice.state = VoicePanel.State.IDLE
+        topBar.transcript = ""; topBar.transcriptPending = false
+        topBar.status = "No dictation engine yet — tap the pill below"
+        say("No dictation engine yet. $reason. Activate the hint to open Reev settings")
     }
 
     override fun onHintTap() {

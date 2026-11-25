@@ -33,7 +33,7 @@ class EmojiView(ctx: Context, private val pal: Palette, private val recents: () 
     private val cols = 8
     private val groups: List<Pair<String, List<String>>> = ctx.assets.open("emoji.tsv").bufferedReader().readLines()
         .filter { it.isNotBlank() }.map { line -> val (g, e) = line.split('\t', limit = 2); g to e.split(' ').filter { it.isNotEmpty() } }
-    private val tabIcons = listOf("🕘", "😀", "👋", "🐻", "🍔", "✈️", "⚽", "💡", "❤️", "🏳️")
+    private val tabIcons = listOf("🕘", "😀", "👋", "🐻", "🍔", "✈️", "⚽", "💡", "❤️", "🏁")
 
     // Flat list of rows: header strings or emoji
     private sealed class Item { data class Header(val title: String) : Item(); data class E(val e: String) : Item() }

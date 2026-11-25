@@ -53,15 +53,20 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
 
     /** A problem to show instead of the usual prompt (engine not ready, mic error). Spoken to screen readers. */
     var hint: String? = null
-        set(v) { if (v != null) announceForAccessibility(v); field = v; hintTappable = false; invalidate(); a11y.invalidateRoot() }
+        set(v) { if (v != null) announceForAccessibility(v); field = v; hintTappable = false; hintAlert = false; invalidate(); a11y.invalidateRoot() }
 
     /** True when [hint] is a call to action: drawn as a pill, a tap calls [Listener.onHintTap]. Any new [hint] resets it. */
     var hintTappable = false
         set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
 
-    private var hintFlashUntil = 0L
-    /** Lights the hint pill for a moment: the visible answer when the talk button can't start dictation. */
-    fun flashHint() { hintFlashUntil = System.currentTimeMillis() + 350; invalidate(); postInvalidateDelayed(360) }
+    /** Keeps the hint pill highlighted after the talk button was pressed with no engine. Any new [hint] resets it. */
+    var hintAlert = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+
+    /** False when no dictation engine is ready: the talk button is drawn dimmed. A press still reaches the listener, which explains why. */
+    var talkEnabled = true
+        set(v) { if (field != v) { field = v; invalidate(); a11y.invalidateRoot() } }
+
 
     /** 0..1 microphone level, smoothed. */
     private var level = 0f
@@ -155,6 +160,8 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         }
 
         // the button
+        val dim = state == State.IDLE && !talkEnabled
+        if (dim) c.saveLayerAlpha(cx - btnR - 2f, cy - btnR - 2f, cx + btnR + 2f, cy + btnR + 2f, 90)
         val scale = if (active) 1f + 0.04f * sin(phase * 2 * Math.PI).toFloat() else 1f
         c.drawCircle(cx, cy, btnR * scale, if (active) rec else accent)
         if (state == State.TRANSCRIBING) {
@@ -171,6 +178,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         } else {
             Icons.mic(c, cx, cy, btnR * 1.05f, micFill, micStroke)
         }
+        if (dim) c.restore()
 
         // cancel (only when recording)
         if (active) {
@@ -191,7 +199,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         if (hintTappable && hint != null) {
             val hr = hintRect()
             val pill = RectF(hr.left, hintY - context.dp(20f), hr.right, hintY + context.dp(11f))
-            val flash = System.currentTimeMillis() < hintFlashUntil
+            val flash = hintAlert
             c.drawRoundRect(pill, pill.height() / 2, pill.height() / 2, if (flash) accent else if (pressed == 7) pressPaint else chip)
             hintAction.color = if (flash) pal.accentText else pal.text
             c.drawText(hintLabel(), cx, hintY, hintAction)
@@ -226,7 +234,7 @@ class VoicePanel(ctx: Context, private val pal: Palette) : View(ctx) {
         val active = state == State.RECORDING || state == State.LATCHED
         val r = btnR + context.dp(12f)
         out += A11yItem(5, when (state) {
-            State.IDLE -> "Start dictation"
+            State.IDLE -> if (talkEnabled) "Start dictation" else "Start dictation, not set up yet"
             State.RECORDING, State.LATCHED -> "Stop and insert"
             State.TRANSCRIBING -> "Transcribing"
             State.INSERTED -> if (insertedIn.isNotEmpty()) "Inserted in $insertedIn" else "Inserted"

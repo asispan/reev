@@ -102,8 +102,18 @@ class SettingsActivity : Activity() {
         scroll.addView(col)
         setContentView(scroll)
         scroll.setOnApplyWindowInsetsListener { v, insets ->
-            @Suppress("DEPRECATION")
-            v.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom); insets
+            val (top, bottom) = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                // Bars + keyboard, asked for explicitly (edge-to-edge is forced on 35+).
+                insets.getInsets(android.view.WindowInsets.Type.systemBars()).top to
+                    insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime()).bottom
+            } else @Suppress("DEPRECATION") (insets.systemWindowInsetTop to insets.systemWindowInsetBottom)
+            v.setPadding(0, top, 0, 0)
+            // Bottom inset as a margin, not padding: the ScrollView really shrinks when the keyboard opens,
+            // and its own onSizeChanged then scrolls the focused field into view.
+            (v.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                if (lp.bottomMargin != bottom) { lp.bottomMargin = bottom; v.layoutParams = lp }
+            }
+            insets
         }
 
         col.addView(text("Reev", 30f, fg, bold = true))
@@ -173,7 +183,7 @@ class SettingsActivity : Activity() {
         // ---- api keys
         val keys = section("Cloud API keys")
         keysBox = keys
-        keys.addView(text("Stored only on this phone (app-private storage). Audio is streamed to the provider you pick.", 13f, sub))
+        keys.addView(text("Stored only on this phone (app-private storage). Audio is streamed to the provider you pick. Clear a field to delete its key.", 13f, sub))
         listOf(Engine.ELEVENLABS, Engine.SARVAM, Engine.SMALLEST, Engine.CARTESIA).forEach { e -> keyField(keys, e) }
 
         // ---- modes
@@ -194,14 +204,17 @@ class SettingsActivity : Activity() {
         ai.addView(text("Model", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
         ai.addView(field(prefs.aiModel, "gpt-4o-mini", false) { prefs.aiModel = it })
         ai.addView(text("API key", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
-        ai.addView(field(prefs.aiKey, "sk-… (clear the field to delete it)", true) { prefs.aiKey = it })
-        ai.addView(text("The endpoint sees the transcript and the text before the caret, never the audio.", 12.5f, sub)
+        ai.addView(field(prefs.aiKey, "sk-…", true) { prefs.aiKey = it })
+        ai.addView(text("Clear the key field to delete the key. The endpoint sees the transcript and the text before the caret, never the audio.", 12.5f, sub)
             .also { it.setPadding(0, dpi(10), 0, 0) })
 
         // ---- typing
         val typ = section("Keyboard")
         typ.addView(text("Theme", 13.5f, fg, bold = true).also { it.setPadding(0, dpi(4), 0, dpi(2)) })
-        val tg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        // Three labels in one row don't fit at large font or on narrow screens: stack them.
+        val tg = RadioGroup(this).apply {
+            orientation = if (resources.configuration.fontScale >= 1.3f || resources.configuration.screenWidthDp < 380) RadioGroup.VERTICAL else RadioGroup.HORIZONTAL
+        }
         listOf("system" to "Follow system", "light" to "Light", "dark" to "Dark").forEach { (id, label) ->
             tg.addView(RadioButton(this).apply {
                 text = label; setTextColor(fg); textSize = 14.5f; this.id = View.generateViewId(); tag = id
@@ -250,22 +263,27 @@ class SettingsActivity : Activity() {
             "They appear for any keyboard you install. Tap OK on each; pressing Back cancels.", 12.5f, sub)
             .also { it.setPadding(0, 0, 0, dpi(6)) })
         step(box, "2. Switch to Reev", current, "Switch") { imm.showInputMethodPicker() }
-        step(box, "3. Allow microphone", mic, "Allow") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2) }
+        step(box, "3. Allow microphone", mic, "Allow", "✓ Allowed") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2) }
         // Same check the voice panel uses, so Setup and the keyboard never disagree.
         val engineReady = Engines.create(this, prefs.engine).notReadyReason() == null
         step(box, "4. Get a dictation engine", engineReady, "Get") { jumpToEngine() }
-        if (!engineReady) box.addView(text("Dictation needs the on-device model (a one-time download) or a cloud API key. Typing works without it.", 12.5f, sub)
-            .also { it.setPadding(0, 0, 0, dpi(6)) })
+        if (!engineReady) {
+            // Size and Wi-Fi advice up front, so "Get" doesn't surprise anyone with a 600 MB list.
+            val mb = LocalModel.from(prefs.localModel).files.sumOf { it.size } / 1_000_000
+            val local = if (prefs.engine == Engine.LOCAL) " The on-device model is about $mb MB: use Wi-Fi." else ""
+            box.addView(text("Dictation needs the on-device model (a one-time download) or a cloud API key. Typing works without it.$local", 12.5f, sub)
+                .also { it.setPadding(0, 0, 0, dpi(6)) })
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults); refreshSetup()
     }
 
-    private fun step(box: LinearLayout, label: String, done: Boolean, action: String, onClick: () -> Unit) {
+    private fun step(box: LinearLayout, label: String, done: Boolean, action: String, doneLabel: String = "✓ Done", onClick: () -> Unit) {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dpi(1), 0, dpi(1)); minimumHeight = dpi(50) }
         row.addView(text(label, 15f, fg), LinearLayout.LayoutParams(0, -2, 1f))
-        if (done) row.addView(text("✓ Done", 14f, Color.parseColor("#5BD68A"), bold = true))
+        if (done) row.addView(text(doneLabel, 14f, Color.parseColor("#5BD68A"), bold = true))
         else row.addView(button(action, onClick))
         box.addView(row)
     }
@@ -274,7 +292,7 @@ class SettingsActivity : Activity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dpi(10), 0, dpi(6)) }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val rb = RadioButton(this).apply {
-            text = m.title; setTextColor(fg); textSize = 15f
+            text = m.title; setTextColor(fg); textSize = 15f; minHeight = dpi(48); gravity = Gravity.CENTER_VERTICAL
             buttonTintList = android.content.res.ColorStateList.valueOf(accent)
             isChecked = prefs.localModel == m.id
             setOnClickListener {
@@ -306,7 +324,7 @@ class SettingsActivity : Activity() {
     private fun keyField(parent: LinearLayout, e: Engine) {
         parent.addView(text(e.title, 13.5f, fg, bold = true).also { it.setPadding(0, dpi(12), 0, dpi(4)) })
         val et = EditText(this).apply {
-            setText(prefs.apiKey(e)); hint = "API key (clear the field to delete it)"; setTextColor(fg); setHintTextColor(sub); textSize = 14f
+            setText(prefs.apiKey(e)); hint = "API key"; setTextColor(fg); setHintTextColor(sub); textSize = 14f; minHeight = dpi(48)
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
@@ -454,7 +472,7 @@ class SettingsActivity : Activity() {
 
     private fun field(value: String, hint: String, secret: Boolean, onChange: (String) -> Unit): EditText {
         val et = EditText(this).apply {
-            setText(value); this.hint = hint; setTextColor(fg); setHintTextColor(sub); textSize = 14f; isSingleLine = true
+            setText(value); this.hint = hint; setTextColor(fg); setHintTextColor(sub); textSize = 14f; isSingleLine = true; minHeight = dpi(48)
             background = rounded(Color.parseColor("#26282E"), 10); setPadding(dpi(12), dpi(10), dpi(12), dpi(10))
             if (secret) {
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
